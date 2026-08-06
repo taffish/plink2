@@ -5,46 +5,151 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Git ref to build; leave empty to build the selected workflow ref"
+        required: false
+        default: ""
+        type: string
+      platforms:
+        description: "Comma-separated declared platforms to rebuild; leave empty to build all"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: build-container-image
+  cancel-in-progress: false
+
+env:
+  SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+  REQUESTED_PLATFORMS: ${{ inputs.platforms || '' }}
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.taffish.outputs.image }}
+      dockerfile: ${{ steps.taffish.outputs.dockerfile }}
+      declared_platforms: ${{ steps.taffish.outputs.declared_platforms }}
+      images: ${{ steps.taffish.outputs.images }}
+      matrix: ${{ steps.taffish.outputs.matrix }}
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Read taffish.toml
+      - name: Read and validate taffish.toml
         id: taffish
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
-          import tomllib
+          import json
+          import os
           from pathlib import Path
+          import tomllib
 
           data = tomllib.loads(Path("taffish.toml").read_text())
+          package = data.get("package", {})
           container = data.get("container", {})
-          image = container.get("image")
-          dockerfile = container.get("dockerfile", "docker/Dockerfile")
-          build_platforms = container.get("build_platforms",
-                                          container.get("platforms",
-                                                        "linux/amd64,linux/arm64"))
-          if not image:
-              raise SystemExit("missing [container].image in taffish.toml")
+
+          image = str(container.get("image", "")).strip()
+          dockerfile = str(container.get("dockerfile", "docker/Dockerfile")).strip()
+          version = str(package.get("version", "")).strip()
+          release = str(package.get("release", "")).strip()
+          if not image or not dockerfile or not version or not release:
+              raise SystemExit("missing package/container release metadata in taffish.toml")
+
+          expected_version_id = f"{version}-r{release}"
+          image_tail = image.rsplit("/", 1)[-1]
+          if ":" not in image_tail or image_tail.rsplit(":", 1)[-1] != expected_version_id:
+              raise SystemExit(
+                  f"container image tag must be {expected_version_id!r}: {image!r}"
+              )
+
+          source_ref = os.environ["SOURCE_REF"]
+          source_name = source_ref.removeprefix("refs/tags/")
+          if source_name.startswith("v") and "-r" in source_name:
+              expected_tag = f"v{expected_version_id}"
+              if source_name != expected_tag:
+                  raise SystemExit(
+                      f"source tag {source_name!r} does not match {expected_tag!r}"
+                  )
+
+          def parse_platforms(value):
+              if isinstance(value, str):
+                  platforms = [item.strip() for item in value.split(",")]
+              elif isinstance(value, list):
+                  platforms = [str(item).strip() for item in value]
+              else:
+                  raise SystemExit("build_platforms/platforms must be a string or list")
+              platforms = [item for item in platforms if item]
+              if not platforms or len(platforms) != len(set(platforms)):
+                  raise SystemExit("build platforms must be non-empty and unique")
+              return platforms
+
+          declared = parse_platforms(
+              container.get(
+                  "build_platforms",
+                  container.get("platforms", "linux/amd64,linux/arm64"),
+              )
+          )
+          requested_raw = os.environ.get("REQUESTED_PLATFORMS", "").strip()
+          requested = parse_platforms(requested_raw) if requested_raw else declared
+
+          runner_for = {
+              "linux/amd64": "ubuntu-24.04",
+              "linux/arm64": "ubuntu-24.04-arm",
+          }
+          unsupported = [item for item in declared if item not in runner_for]
+          undeclared = [item for item in requested if item not in declared]
+          if unsupported:
+              raise SystemExit(f"unsupported declared platforms: {unsupported}")
+          if undeclared:
+              raise SystemExit(f"requested platforms are not declared: {undeclared}")
+
+          matrix = {
+              "include": [
+                  {
+                      "platform": platform,
+                      "arch": platform.removeprefix("linux/").replace("/", "-"),
+                      "runner": runner_for[platform],
+                  }
+                  for platform in requested
+              ]
+          }
+          images = " ".join(
+              f"{image}-{platform.removeprefix('linux/').replace('/', '-')}"
+              for platform in declared
+          )
+
           print(f"image={image}")
           print(f"dockerfile={dockerfile}")
-          print(f"build_platforms={build_platforms}")
-          print(f"amd64_image={image}-amd64")
-          print(f"arm64_image={image}-arm64")
+          print(f"declared_platforms={','.join(declared)}")
+          print(f"images={images}")
+          print(f"matrix={json.dumps(matrix, separators=(',', ':'))}")
           PY
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -53,44 +158,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push amd64 image
+      - name: Build and push platform image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ steps.taffish.outputs.dockerfile }}
-          platforms: linux/amd64
+          file: ${{ needs.prepare.outputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.taffish.outputs.amd64_image }}
+          tags: ${{ needs.prepare.outputs.image }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=build-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=TAFFISH app container image
 
-      - name: Build and push arm64 image
-        id: build_arm64
-        if: contains(steps.taffish.outputs.build_platforms, 'linux/arm64')
-        continue-on-error: true
-        uses: docker/build-push-action@v6
+  manifest:
+    name: Publish and verify manifest
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: ${{ steps.taffish.outputs.dockerfile }}
-          platforms: linux/arm64
-          push: true
-          tags: ${{ steps.taffish.outputs.arm64_image }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=TAFFISH app container image
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish final image manifest
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          PLATFORM_IMAGES: ${{ needs.prepare.outputs.images }}
         run: |
-          images="${{ steps.taffish.outputs.amd64_image }}"
-          if [ "${{ steps.build_arm64.outcome }}" = "success" ]; then
-            images="$images ${{ steps.taffish.outputs.arm64_image }}"
-          else
-            echo "arm64 build did not succeed; publishing amd64-only manifest."
-          fi
-          docker buildx imagetools create \
-            -t "${{ steps.taffish.outputs.image }}" \
-            $images
+          read -r -a images <<< "$PLATFORM_IMAGES"
+          docker buildx imagetools create -t "$IMAGE" "${images[@]}"
+
+      - name: Verify declared platforms
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          DECLARED_PLATFORMS: ${{ needs.prepare.outputs.declared_platforms }}
+        run: |
+          docker buildx imagetools inspect --raw "$IMAGE" > /tmp/manifest.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(Path("/tmp/manifest.json").read_text())
+          present = set()
+          for item in manifest.get("manifests", []):
+              platform = item.get("platform", {})
+              os_name = platform.get("os")
+              architecture = platform.get("architecture")
+              if not os_name or not architecture or architecture == "unknown":
+                  continue
+              name = f"{os_name}/{architecture}"
+              if platform.get("variant"):
+                  name += f"/{platform['variant']}"
+              present.add(name)
+
+          expected = set(os.environ["DECLARED_PLATFORMS"].split(","))
+          missing = sorted(expected - present)
+          if missing:
+              raise SystemExit(f"final manifest is missing declared platforms: {missing}")
+          print("verified platforms: " + ", ".join(sorted(expected)))
+          PY
 
       - name: GHCR visibility note
         run: |

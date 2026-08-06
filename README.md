@@ -1,22 +1,30 @@
 # plink2
 
-`plink2` packages PLINK 2.0 alpha 7.1 for TAFFISH.
+`plink2` packages PLINK 2.0 alpha 7.2 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-a.7.1-r1`
+- version: `2.0.0-a.7.2-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-a.7.2-r1`
 - license: Apache-2.0 for TAFFISH packaging
+- upstream tag: `v2.0.0-a.7.2`
+- runtime: `PLINK v2.0.0-a.7.2` and `vcf_subset v1.1.0`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-a.7.1`, corresponding to the upstream "Alpha 7.1" build posted on
-4 May 2026. The default command is `plink2`; the image also includes the
-upstream `vcf_subset` helper distributed with the official Linux binary assets.
+`v2.0.0-a.7.2`, posted on 6 August 2026. The default command is `plink2`; the
+same source tree also provides the upstream `vcf_subset` helper.
+
+Compared with alpha 7.1, alpha 7.2 adds `vcf_subset --extract/--exclude`
+variant-ID filters, fixes a crash involving deletion records with missing PVAR
+IDs, and includes numerical and build-system corrections. The upstream Python
+`pgenlib` and R `pgenlibr` packages also changed, but remain outside this
+command-line runtime app's boundary.
 
 ## Scope
 
@@ -27,7 +35,7 @@ This app supports:
   supported by upstream PLINK 2.0.
 - Common QC/statistics/GWAS operations such as `--freq`, `--hardy`, `--missing`,
   `--pca`, `--glm`, `--make-pgen`, `--make-bed`, and `--export`.
-- VCF sample subsetting through `vcf_subset`.
+- VCF sample and variant-ID subsetting through `vcf_subset`.
 
 This app does not package:
 
@@ -40,7 +48,8 @@ This app does not package:
 ## Container Contents
 
 - `plink2`: PLINK 2.0 alpha command-line application.
-- `vcf_subset`: helper for sample subsetting of VCF/VCF.GZ inputs.
+- `vcf_subset`: helper for sample and variant-ID subsetting of VCF/VCF.GZ
+  inputs.
 - Runtime libraries: Debian OpenBLAS/LAPACK/LAPACKE, zlib, libstdc++ and their
   runtime dependencies.
 
@@ -87,6 +96,13 @@ Subset VCF samples with the packaged helper:
 taf-plink2 vcf_subset --in input.vcf.gz --out subset.vcf.gz --keep samples.txt
 ```
 
+Filter VCF records by variant ID with `vcf_subset 1.1.0`:
+
+```sh
+taf-plink2 vcf_subset --in input.vcf.gz --out selected.vcf.gz --extract variants.txt
+taf-plink2 vcf_subset --in input.vcf.gz --out excluded.vcf.gz --exclude variants.txt
+```
+
 ## Command Mode
 
 TAFFISH tool apps support automatic command mode. For option-leading PLINK 2.0
@@ -129,14 +145,12 @@ container build.
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-a.7.1`
-- Upstream commit: `9e589f164d2c1e4861f9631724abe6f439b958c1`
+- Upstream tag: `v2.0.0-a.7.2`
+- Upstream commit: `410c6dc23d1c5ebabc51288fa6da6d40c7ef4228`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.1.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.2.tar.gz`
 - Source SHA256:
-  `19344fa5ed9fac92241c23d5e2b5f73059c8880f8216b590187b7ea5caf79551`
-- Official Linux x86_64 asset SHA256, for comparison:
-  `b8e68c8c06343a8b30c6a89a3488b05d6f2ea2f46749ad934a8966512da5d571`
+  `427455047b636c742d55098d4471fd2c4cbacb87fad2c201c32a8fb4efe00eb3`
 
 ## Boundaries
 
@@ -158,6 +172,8 @@ The smoke test covers:
 - OpenBLAS/LAPACK/zlib dynamic library resolution
 - synthetic `--dummy` to PGEN generation
 - `--freq`, `--hardy`, VCF export, and `vcf_subset` sample subsetting
+- `vcf_subset --extract/--exclude` variant-ID filtering
+- fresh-container, fail-fast execution for every independent smoke case
 
 It does not replace validation on real GWAS cohorts, imputed dosage data,
 multi-phenotype association models, or production-scale reference panels.
