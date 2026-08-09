@@ -1,4 +1,4 @@
-plink2 2.0.0-a.7.2-r1
+plink2 2.0.0-a.7.3-r1
 
 Purpose:
   PLINK 2.0 alpha runtime for large-scale genotype data management,
@@ -41,13 +41,13 @@ Key outputs:
   .vcf/.bed/etc.       exported formats requested with --export/--make-*
 
 Platform and resources:
-  Built from the upstream v2.0.0-a.7.2 source tag with the upstream
+  Built from the upstream v2.0.0-a.7.3 source tag with the upstream
   build_dynamic CPU baseline: no AVX2 and no SSE4.2 requirement. BLAS/LAPACK
   are provided by Debian OpenBLAS/LAPACK dynamic libraries.
   Native container platforms are linux/amd64 and linux/arm64.
 
 Boundaries:
-  This is PLINK 2.0 alpha 7.2, not PLINK 1.9/1.07.
+  This is PLINK 2.0 alpha 7.3, not PLINK 1.9/1.07.
   The container does not bundle reference panels, phenotype files, covariates,
   genome FASTA files, or tutorial datasets.
   CUDA/GPU proof-of-concept builds and the Python/R pgen libraries are not

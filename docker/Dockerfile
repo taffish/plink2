@@ -1,9 +1,9 @@
 FROM debian:12-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG PLINK2_VERSION=2.0.0-a.7.2
-ARG PLINK2_TAG=v2.0.0-a.7.2
-ARG PLINK2_SHA256=427455047b636c742d55098d4471fd2c4cbacb87fad2c201c32a8fb4efe00eb3
+ARG PLINK2_VERSION=2.0.0-a.7.3
+ARG PLINK2_TAG=v2.0.0-a.7.3
+ARG PLINK2_SHA256=7f0124c2f14b68a10ff4fcf79644858abde7d367e0e7f6ee1728e53ed025d0e6
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -70,7 +70,7 @@ COPY --from=builder /opt/plink2 /opt/plink2
 RUN set -eux; \
     ln -s /opt/plink2/bin/plink2 /usr/local/bin/plink2; \
     ln -s /opt/plink2/bin/vcf_subset /usr/local/bin/vcf_subset; \
-    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.2" >/dev/null; \
+    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.3" >/dev/null; \
     plink2 --help 2>&1 | grep -F -- "--make-pgen" >/dev/null; \
     vcf_subset --version 2>&1 | grep -F "vcf_subset v1.1.0" >/dev/null; \
     vcf_subset --help 2>&1 | grep -F "Usage: vcf_subset" >/dev/null; \

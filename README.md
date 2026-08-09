@@ -1,30 +1,30 @@
 # plink2
 
-`plink2` packages PLINK 2.0 alpha 7.2 for TAFFISH.
+`plink2` packages PLINK 2.0 alpha 7.3 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-a.7.2-r1`
-- image: `ghcr.io/taffish/plink2:2.0.0-a.7.2-r1`
+- version: `2.0.0-a.7.3-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-a.7.3-r1`
 - license: Apache-2.0 for TAFFISH packaging
-- upstream tag: `v2.0.0-a.7.2`
-- runtime: `PLINK v2.0.0-a.7.2` and `vcf_subset v1.1.0`
+- upstream tag: `v2.0.0-a.7.3`
+- runtime: `PLINK v2.0.0-a.7.3` and `vcf_subset v1.1.0`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-a.7.2`, posted on 6 August 2026. The default command is `plink2`; the
+`v2.0.0-a.7.3`, posted on 8 August 2026. The default command is `plink2`; the
 same source tree also provides the upstream `vcf_subset` helper.
 
-Compared with alpha 7.1, alpha 7.2 adds `vcf_subset --extract/--exclude`
-variant-ID filters, fixes a crash involving deletion records with missing PVAR
-IDs, and includes numerical and build-system corrections. The upstream Python
-`pgenlib` and R `pgenlibr` packages also changed, but remain outside this
-command-line runtime app's boundary.
+Compared with alpha 7.2, alpha 7.3 fixes an overflow path that could make
+`--hardy` and chromosome-X `--hwe` hang on biobank-scale inputs, and corrects
+an autosomal `--hwe` corner case at thresholds just below the minimum positive
+normal double. The upstream command surface, build dependencies, bundled
+`vcf_subset` 1.1.0 helper, and layered license set are unchanged.
 
 ## Scope
 
@@ -145,12 +145,12 @@ container build.
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-a.7.2`
-- Upstream commit: `410c6dc23d1c5ebabc51288fa6da6d40c7ef4228`
+- Upstream tag: `v2.0.0-a.7.3`
+- Upstream commit: `7b30cf1733c4f50c6699268a9f07fb6af206ed49`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.2.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.3.tar.gz`
 - Source SHA256:
-  `427455047b636c742d55098d4471fd2c4cbacb87fad2c201c32a8fb4efe00eb3`
+  `7f0124c2f14b68a10ff4fcf79644858abde7d367e0e7f6ee1728e53ed025d0e6`
 
 ## Boundaries
 
@@ -177,6 +177,9 @@ The smoke test covers:
 
 It does not replace validation on real GWAS cohorts, imputed dosage data,
 multi-phenotype association models, or production-scale reference panels.
+The upstream a.7.3 regression involves biobank-scale genotype counts and is
+therefore documented from the official release note and source diff rather
+than recreated inside the tiny container smoke.
 
 ## License and Citation
 
