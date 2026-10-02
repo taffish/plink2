@@ -1,0 +1,137 @@
+#!/usr/bin/python3
+"""显式、固定清单的参考资源安装；不替用户选择科学数据。"""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+CATALOG = Path('/opt/plink2/share/resources.json')
+
+def digest(path):
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for b in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(b)
+    return h.hexdigest()
+
+def canonical(data):
+    return json.dumps(data, sort_keys=True, separators=(',', ':')).encode()
+
+def load_catalog(path):
+    data = json.loads(path.read_text())
+    if data.get('schema') != 1 or not isinstance(data.get('members'), list):
+        raise ValueError('expected schema=1 and members array')
+    seen = set()
+    for m in data['members']:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', m['id']) or m['id'] in seen:
+            raise ValueError('invalid or duplicate member ID')
+        seen.add(m['id'])
+        if not m.get('version') or not m.get('license') or not m.get('source') or not m['files']:
+            raise ValueError('version/license/source/files required')
+        names = set()
+        for f in m['files']:
+            name = f['name']
+            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) or name in names or name == 'receipt.json':
+                raise ValueError('invalid or duplicate filename')
+            names.add(name)
+            if not f['url'].startswith('https://') or not re.fullmatch('[0-9a-f]{64}', f['sha256']):
+                raise ValueError('HTTPS URL and exact SHA256 required')
+            if type(f['bytes']) is not int or f['bytes'] <= 0:
+                raise ValueError('positive fixed byte count required')
+    return data
+
+def verify(member, target):
+    if target.is_symlink() or not target.is_dir():
+        raise ValueError('not a regular installed member directory')
+    receipt = target / 'receipt.json'
+    if receipt.is_symlink() or not receipt.is_file():
+        raise ValueError('missing regular receipt')
+    if json.loads(receipt.read_text()) != member:
+        raise ValueError('receipt does not match selected fixed member')
+    if {x.name for x in target.iterdir()} != {'receipt.json'} | {f['name'] for f in member['files']}:
+        raise ValueError('unexpected or missing files')
+    for f in member['files']:
+        path = target / f['name']
+        if path.is_symlink() or not path.is_file() or path.stat().st_size != f['bytes'] or digest(path) != f['sha256']:
+            raise ValueError('checksum/size mismatch: ' + f['name'])
+
+def main():
+    p = argparse.ArgumentParser(description='Install explicitly selected checksum-pinned PLINK reference members; never downloads all by default.')
+    p.add_argument('action', choices=['list', 'install', 'verify'])
+    p.add_argument('--catalog', type=Path, default=CATALOG, help='schema-1 JSON; independently fixed URLs, SHA256, sizes and resource licenses')
+    p.add_argument('--member', action='append', help='required explicit member ID; repeat to select multiple')
+    p.add_argument('--resource-root', type=Path, help='existing writable host-bound directory for install; read-only directory for verify')
+    p.add_argument('--dry-run', action='store_true')
+    a = p.parse_args()
+    data = load_catalog(a.catalog)
+    if a.action == 'list':
+        print(json.dumps(data, indent=2)); return
+    if not a.member:
+        p.error('--member is required; no implicit all')
+    lookup = {m['id']: m for m in data['members']}
+    chosen = [lookup[key] for key in dict.fromkeys(a.member)]
+    if a.dry_run:
+        print(json.dumps(dict(schema=1, members=chosen, download_bytes=sum(f['bytes'] for m in chosen for f in m['files']), catalog_sha256=digest(a.catalog)), indent=2)); return
+    if not a.resource_root or not a.resource_root.is_dir():
+        p.error('--resource-root must be an existing actual host-bound directory')
+    root = a.resource_root.resolve()
+    os.umask(0o022)
+    for m in chosen:
+        target = root / m['id']
+        if a.action == 'verify' or target.exists() or target.is_symlink():
+            verify(m, target)
+            print('VERIFIED ' + m['id']); continue
+        lock = root / '.plink2-resources.lock'
+        fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('resource root is locked; retry after the other installer finishes')
+            if target.exists() or target.is_symlink():
+                verify(m, target); print('VERIFIED ' + m['id']); continue
+            stage = root / ('.partial-' + hashlib.sha256(canonical(m)).hexdigest())
+            if stage.is_symlink():
+                raise ValueError('refusing symlink staging directory')
+            stage.mkdir(mode=0o700, exist_ok=True)
+            if stage.stat().st_uid != os.getuid() or stage.stat().st_mode & 0o077:
+                raise ValueError('staging must be private and owned by this installer')
+            allowed = {f['name'] for f in m['files']} | {'receipt.json'}
+            if any(x.is_symlink() or not x.is_file() or x.name not in allowed for x in stage.iterdir()):
+                raise ValueError('unexpected staging content')
+            required = sum(f['bytes'] for f in m['files']) + 16 * 1024**2
+            if shutil.disk_usage(root).free < required:
+                raise ValueError('insufficient disk space (needs member size plus 16 MiB safety margin)')
+            for f in m['files']:
+                dst = stage / f['name']
+                if dst.exists() and dst.stat().st_size == f['bytes'] and digest(dst) == f['sha256']:
+                    dst.chmod(0o644)
+                    continue
+                if dst.exists() and dst.stat().st_size >= f['bytes']:
+                    raise ValueError('corrupt cached file; preserve evidence and use a new root: ' + str(dst))
+                cmd = ['curl', '--fail', '--location', '--proto', '=https', '--proto-redir', '=https', '--retry', '2', '--connect-timeout', '30', '--speed-time', '60', '--speed-limit', '1024', '--continue-at', '-', '--output', str(dst), f['url']]
+                r = subprocess.run(cmd)
+                if r.returncode:
+                    raise ValueError('download failed exit=' + str(r.returncode) + '; partial retained for resume at ' + str(stage))
+                if dst.stat().st_size != f['bytes'] or digest(dst) != f['sha256']:
+                    raise ValueError('download checksum mismatch; no install promoted')
+                dst.chmod(0o644)
+            (stage / 'receipt.json').write_text(json.dumps(m, indent=2) + '\n')
+            (stage / 'receipt.json').chmod(0o644)
+            verify(m, stage)
+            stage.chmod(0o755)
+            stage.rename(target)
+            print('INSTALLED ' + str(target))
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, KeyError, OSError) as e:
+        print('plink2-resources: ERROR: ' + str(e), file=sys.stderr)
+        sys.exit(1)

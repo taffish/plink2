@@ -1,9 +1,9 @@
 FROM debian:12-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG PLINK2_VERSION=2.0.0-a.7.3
-ARG PLINK2_TAG=v2.0.0-a.7.3
-ARG PLINK2_SHA256=7f0124c2f14b68a10ff4fcf79644858abde7d367e0e7f6ee1728e53ed025d0e6
+ARG PLINK2_VERSION=2.0.0-a.7.10
+ARG PLINK2_TAG=v2.0.0-a.7.10
+ARG PLINK2_SHA256=d012e340e6fbdabcc77b57cb2e0d0f20181a759eb268fc51d3418410d819a272
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -55,6 +55,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       bash \
+      curl \
+      python3 \
       gawk \
       gzip \
       grep \
@@ -66,11 +68,16 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/plink2 /opt/plink2
+COPY docker/plink2-resources /opt/plink2/bin/plink2-resources
+COPY docker/resources.json /opt/plink2/share/resources.json
+COPY docker/plink2-smoke /opt/plink2/bin/plink2-smoke
+
+RUN chmod 0755 /opt/plink2/bin/plink2-resources /opt/plink2/bin/plink2-smoke
 
 RUN set -eux; \
     ln -s /opt/plink2/bin/plink2 /usr/local/bin/plink2; \
     ln -s /opt/plink2/bin/vcf_subset /usr/local/bin/vcf_subset; \
-    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.3" >/dev/null; \
+    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.10" >/dev/null; \
     plink2 --help 2>&1 | grep -F -- "--make-pgen" >/dev/null; \
     vcf_subset --version 2>&1 | grep -F "vcf_subset v1.1.0" >/dev/null; \
     vcf_subset --help 2>&1 | grep -F "Usage: vcf_subset" >/dev/null; \

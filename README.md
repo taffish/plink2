@@ -1,30 +1,31 @@
 # plink2
 
-`plink2` packages PLINK 2.0 alpha 7.3 for TAFFISH.
+`plink2` packages PLINK 2.0 alpha 7.10 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-a.7.3-r1`
-- image: `ghcr.io/taffish/plink2:2.0.0-a.7.3-r1`
+- version: `2.0.0-a.7.10-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-a.7.10-r1`
 - license: Apache-2.0 for TAFFISH packaging
-- upstream tag: `v2.0.0-a.7.3`
-- runtime: `PLINK v2.0.0-a.7.3` and `vcf_subset v1.1.0`
+- upstream tag: `v2.0.0-a.7.10`
+- runtime: `PLINK v2.0.0-a.7.10` and `vcf_subset v1.1.0`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-a.7.3`, posted on 8 August 2026. The default command is `plink2`; the
+`v2.0.0-a.7.10`, posted on 29 September 2026. The default command is `plink2`; the
 same source tree also provides the upstream `vcf_subset` helper.
 
-Compared with alpha 7.2, alpha 7.3 fixes an overflow path that could make
-`--hardy` and chromosome-X `--hwe` hang on biobank-scale inputs, and corrects
-an autosomal `--hwe` corner case at thresholds just below the minimum positive
-normal double. The upstream command surface, build dependencies, bundled
-`vcf_subset` 1.1.0 helper, and layered license set are unchanged.
+This continues the existing alpha 7 maintenance track, not the separate beta 1
+development build. The a.7.3 to a.7.10 source delta includes sex/missingness,
+genotype import/export, regression/PCA projection, multiallelic-phased frequency
+and LD fixes, and clearer input-error diagnostics. Beta-only new commands are not
+claimed. The dynamic build dependencies, `vcf_subset` 1.1.0 and layered software
+license set remain unchanged. No upstream algorithm/source patch is applied.
 
 ## Scope
 
@@ -52,12 +53,19 @@ This app does not package:
   inputs.
 - Runtime libraries: Debian OpenBLAS/LAPACK/LAPACKE, zlib, libstdc++ and their
   runtime dependencies.
+- `plink2-resources`: explicit, checksum-pinned reference installation and
+  verification helper (Python standard library + curl); not an upstream command.
+- `plink2-smoke`: independent offline packaging checks, not an analysis frontend.
 
 The container is built from source with the upstream `build_dynamic` baseline:
 `NO_AVX2=1`, `NO_SSE42=1`, and `CPU_CHECK=1`. This avoids requiring AVX2 or
 SSE4.2 instructions while still using OpenBLAS/LAPACK for linear algebra.
 
 ## Usage
+
+Install the published package through your usual TAFFISH workflow. From a source
+checkout, `taf check` and `taf build` generate
+`target/taf-plink2-v2.0.0-a.7.10-r1`; building a local candidate is not publishing.
 
 Access upstream help and version:
 
@@ -131,28 +139,113 @@ files. See the upstream output-file index for exhaustive details.
 
 ## Resources, Databases, and Platform
 
-No database or reference panel is bundled or required for basic PLINK 2.0
-operation. Workflows needing phenotype/covariate tables, reference FASTA files,
-genetic maps, LD reference panels, or imputation/reference resources should pass
-those files explicitly through upstream PLINK 2.0 flags.
+No reference is needed for basic operation, but references are **not all N/A**.
+Project cohorts/phenotypes are project-specific inputs. The official resources
+page also links reusable 1000 Genomes callsets, HGDP panels and GRCh37/38 FASTA.
+The independently fixed unit is a callset/chromosome with matching variant and
+sample tables, or a single FASTA, not the entire evolving resource family.
 
-This app is intended to build natively on `linux/amd64` and `linux/arm64` from
-source. The official upstream binary assets are primarily platform-specific
-prebuilt zips; this TAFFISH app uses the source tag to provide a reproducible
-container build.
+`plink2-resources` supports explicit repeated `--member`, `list`, `install`,
+`verify`, `--dry-run`, `--resource-root` and a schema-1 JSON `--catalog`.
+The bundled catalog pins one complete representative member:
+`hgdp-grch38-chry-noannot-20260930` (three files, 5,281,419 download bytes).
+This is **chrY, not a whole-genome reference**. Other official members/FASTA can
+use a custom pinned catalog; this is not an exhaustive built-in upstream mirror.
+
+```sh
+taf-plink2 plink2-resources list
+taf-plink2 plink2-resources install --member hgdp-grch38-chry-noannot-20260930 --dry-run
+mkdir -p plink2-resources
+taf-plink2 plink2-resources install --member hgdp-grch38-chry-noannot-20260930 --resource-root plink2-resources
+```
+
+Catalog schema: `{"schema":1,"members":[{"id":"...","version":"...",
+"source":"...","license":"...","files":[{"name":"...","url":"https://...",
+"sha256":"64 lowercase hex characters","bytes":123}]}]}`. Match the installed
+`/opt/plink2/share/resources.json` example. Use `--catalog chosen.json` for both
+installation and verification of a custom member. Resolve the scientific callset
+and resource terms first; pin each source independently. Missing SHA256, sizes
+and license statements are rejected. No implicit `all`, live `latest`, fallback
+or silent checksum refresh. Bundled hashes are TAFFISH's 2026-09-30 observations,
+not claimed upstream-published checksums. Data download from official Dropbox
+links and are not redistributed in the image.
+
+The root must exist and be a persistent host directory (working-directory bind
+or explicit writable bind). Installation uses a root lock, private deterministic
+staging, two retries, curl Range continuation, SHA256/size verification, a per-member
+`receipt.json` and atomic same-filesystem promotion. Download concurrency is one.
+Required free space is selected member bytes plus 16 MiB; decompression requires
+additional project space. Completed files are reused after hashing; partial files
+remain in `.partial-*`. A server refusing Range causes failure, not unsafe append.
+Corruption fails closed. No destructive `--force`: preserve a damaged root for
+inspection and install into a new root; directory existence alone never passes.
+
+Personal root: `~/.local/share/taffish/resources/plink2`. Site alternatives:
+`/usr/local/share/taffish/resources/plink2` or `/opt/taffish/resources/plink2`.
+An administrator prepares the site root and installs once; member directories
+are 0755, files 0644. Ensure all parents are traversable. Only the installer needs
+write access; ordinary users verify/read via a read-only bind. This helper never
+changes system permissions or installs into site directories automatically.
+
+Discovery/override decision: no automatic host reference discovery/mounting.
+Reference genotypes may be sensitive, and PLINK supports multiple scientifically
+distinct paths; exposing a user's/site's repository implicitly is undesirable.
+`TAFFISH_PLINK2_RESOURCE_PATH` below is only shell shorthand, not an interpreted
+app setting. Choose a root explicitly; unset backend run arguments to disable
+exposure. Resolve symlinks with `cd PATH && pwd -P` and use paths without spaces,
+colon or comma in the examples. Member selection always remains explicit.
+
+Runtime write map: project outputs, logs and conversion intermediates use the
+writable output prefix; smoke uses unique `/tmp`. Installed code/catalogs and
+reference inputs are read-only. PLINK itself has no implicit downloader/cache;
+missing local data fail. Never write derived indexes or decompressed data into
+a read-only shared member.
+
+## Backend Usage and Capability Matrix
+
+Choose `TAFFISH_CONTAINER_BACKEND=docker`, `podman` or `apptainer`; analysis
+commands are otherwise identical. Both `linux/amd64` and `linux/arm64` are native
+source builds. Apptainer needs Linux; macOS uses Docker/Podman Linux VMs. No GPU,
+service, device or emulation flags are intrinsic requirements.
+
+Set `TAFFISH_PLINK2_RESOURCE_PATH` to the absolute prepared host root, then export
+the matching optional policy (append rather than overwrite existing site policy):
+
+| Backend | Read-only exposure |
+| --- | --- |
+| Docker | `TAFFISH_DOCKER_RUN_ARGS="-v $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro"` |
+| Podman | `TAFFISH_PODMAN_RUN_ARGS="-v $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro"` |
+| Apptainer | `TAFFISH_APPTAINER_RUN_ARGS="--bind $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro"` |
+
+```sh
+taf-plink2 plink2-resources verify --resource-root /references --member hgdp-grch38-chry-noannot-20260930
+taf-plink2 -- --zst-decompress /references/hgdp-grch38-chry-noannot-20260930/hgdp_chrY.pgen.zst hgdp_chrY.pgen
+taf-plink2 -- --pgen hgdp_chrY.pgen --pvar /references/hgdp-grch38-chry-noannot-20260930/hgdp_chrY.pvar.zst --psam /references/hgdp-grch38-chry-noannot-20260930/hgdp_chrY.psam --freq --out reference-freq
+```
+
+For Docker output ownership, add `--user UID:GID` using your numeric IDs;
+rootless Podman can use `--userns keep-id`; Apptainer uses the ordinary caller.
+An administrator can separately prepare an uncompressed derived PGEN with its
+own provenance/hash; do not insert it into the immutable fixed member directory.
 
 ## Reproducibility
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-a.7.3`
-- Upstream commit: `7b30cf1733c4f50c6699268a9f07fb6af206ed49`
+- Upstream tag: `v2.0.0-a.7.10`
+- Upstream commit: `5611170d0f1eaf9f4cf837ed49a0897fe25e130c`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.3.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.10.tar.gz`
 - Source SHA256:
-  `7f0124c2f14b68a10ff4fcf79644858abde7d367e0e7f6ee1728e53ed025d0e6`
+  `d012e340e6fbdabcc77b57cb2e0d0f20181a759eb268fc51d3418410d819a272`
 
 ## Boundaries
+
+Official source entry points, recommended installation, developer documentation
+and tutorial companions were checked: no PLINK 2 alpha GUI/plugin extra is
+packaged upstream. RStudio is an external tutorial environment; legacy gPLINK/
+Haploview are PLINK 1-era clients, not a PLINK 2 GUI contract. This app starts no
+browser service. A future compatible GUI needs its own explicit review.
 
 PLINK 2.0 is under active alpha development. This app pins a specific alpha
 release and checks the runtime version, but users should still review upstream
@@ -177,9 +270,35 @@ The smoke test covers:
 
 It does not replace validation on real GWAS cohorts, imputed dosage data,
 multi-phenotype association models, or production-scale reference panels.
-The upstream a.7.3 regression involves biobank-scale genotype counts and is
-therefore documented from the official release note and source diff rather
-than recreated inside the tiny container smoke.
+Additional checks cover exact runtime identity, multiallelic phased allele
+frequencies, PCA, malformed/missing input diagnostics, and resource selection.
+Biobank-scale regressions, full-genome reference downloads, CUDA, Python/R API
+workflows and production site deployment are not claimed by tiny smoke.
+Native amd64 and arm64 app-root builds passed on 2026-09-30. The unchanged
+runtime candidate was revalidated on 2026-10-02: Docker and Podman passed on
+both architectures, normal and read-only roots; native amd64 Apptainer passed
+with a read-only SIF from the same OCI.
+The rerun passed 198 exact fresh/offline probes, 125 real-wrapper checks, 20 intentional
+fault injections, and 16 resource-contract cases on each of five backend/platform
+routes. Real wrapper tests include PCA/GWAS, stdin/quoted paths, persistent output,
+fixed reference install/verify/decompression/frequencies and denied reference writes.
+HTTPS download/resume and read-only reuse by a second ordinary UID were additionally
+validated on 2026-09-30.
+Arm64 Apptainer is not separately validated; no architecture-specific mount/GPU/
+GUI coupling was found. No backend exception is used. Actual root/system-wide
+production deployment and entire resource-family scientific validation were not run.
+
+Final image sizes: amd64 188,940,433 bytes, arm64 191,710,913 bytes. Multi-stage
+builds keep compiler/source archives out of final images; size is primarily linear
+algebra/runtime libraries and Python standard library. Runtime notices are retained;
+headers/apt cache are negligible (48 KiB/12 KiB), not removable large build payloads.
+
+Publication validation (2026-10-02): ordinary
+`taf publish --build --release --dry-run` passed with the updated local TAFFISH
+publisher (`remote: checked`, `outcome: planned`). The earlier publisher-side
+alpha-version ordering rejection no longer blocks this candidate; no version
+renaming or `--pre` bypass is required. These checks establish local readiness,
+not actual publication, subsequent Action/GHCR/Index success or scientific acceptance.
 
 ## License and Citation
 
@@ -189,6 +308,12 @@ PLINK 2.0 upstream licensing is layered: the main application is GPL-3.0-or-late
 the include libraries and `vcf_subset` are LGPL-3.0-or-later, and bundled SIMDe,
 libdeflate, and zstd components retain their own upstream licenses. License
 files are copied into the container under `/opt/plink2/share/licenses/plink2/`.
+
+Resource terms are separate: the official [resource page](https://www.cog-genomics.org/plink/2.0/resources)
+describes HGDP as freely available for analyses and requests citation of
+Bergström et al. (2020), Science 367. Review exact source terms/citation for
+1000 Genomes/FASTA custom members; software GPL does not license those data.
+System dependency copyright notices remain under `/usr/share/doc`.
 
 If you use PLINK 2.0 in research, cite:
 

@@ -1,0 +1,101 @@
+#!/bin/sh
+# 每个模式独立、断网、自包含；保留 stage/退出码/有界日志。
+set -eu
+mode=${1:?mode required}
+tmp=$(mktemp -d /tmp/taf-plink2-smoke.XXXXXX)
+stage=init
+finish() {
+    rc=$?
+    trap - EXIT
+    if [ "$rc" != 0 ]; then
+        printf >&2 'plink2-smoke: FAIL mode=%s stage=%s exit=%s\n' "$mode" "$stage" "$rc"
+        for f in "$tmp"/*.log; do
+            [ -f "$f" ] || continue
+            printf >&2 '\n--- %s ---\n' "$f"
+            tail -n 25 "$f" >&2
+        done
+    else
+        printf 'plink2-smoke: PASS %s\n' "$mode"
+    fi
+    rm -rf "$tmp"
+    exit "$rc"
+}
+trap finish EXIT
+cd "$tmp"
+run() { stage=$1; shift; "$@" > "$stage.log" 2>&1; }
+case "$mode" in
+identity)
+    stage=identity
+    grep -Fx 'PLINK 2.0 2.0.0-a.7.10' /opt/plink2/share/doc/plink2/source.txt
+    grep -Fx 'SHA256: d012e340e6fbdabcc77b57cb2e0d0f20181a759eb268fc51d3418410d819a272' /opt/plink2/share/doc/plink2/source.txt
+    for f in COPYING COPYING.LESSER simde-COPYING libdeflate-COPYING zstd-COPYING zstd-LICENSE; do
+        test -s "/opt/plink2/share/licenses/plink2/$f"
+    done
+    ;;
+interface)
+    run version plink2 --version
+    grep -Fx 'PLINK v2.0.0-a.7.10 64-bit (29 Sep 2026)' version.log
+    run help plink2 --help
+    for opt in --make-pgen --glm --pca --hardy --export; do grep -F -- "$opt" help.log >/dev/null; done
+    run subset-version vcf_subset --version
+    grep -Fx 'vcf_subset v1.1.0 64-bit (16 May 2026)' subset-version.log
+    run subset-help vcf_subset --help
+    for opt in --extract --exclude --keep; do grep -F -- "$opt" subset-help.log >/dev/null; done
+    ;;
+linkage)
+    run linkage ldd /opt/plink2/bin/plink2
+    for lib in libopenblas liblapack libz.so; do grep -F "$lib" linkage.log >/dev/null; done
+    if grep -F 'not found' linkage.log; then exit 1; fi
+    run subset-linkage ldd /opt/plink2/bin/vcf_subset
+    grep -F libz.so subset-linkage.log >/dev/null
+    if grep -F 'not found' subset-linkage.log; then exit 1; fi
+    ;;
+core)
+    run dummy plink2 --dummy 64 24 acgt --seed 42 --threads 1 --memory 640 --make-pgen --out tiny
+    for f in tiny.pgen tiny.pvar tiny.psam; do test -s "$f"; done
+    run statistics plink2 --pfile tiny --freq --hardy --missing --threads 1 --memory 640 --out stats
+    for f in stats.afreq stats.hardy stats.vmiss stats.smiss; do test -s "$f"; done
+    run export plink2 --pfile tiny --export vcf --threads 1 --memory 640 --out exported
+    grep -F '#CHROM' exported.vcf
+    run components plink2 --pfile tiny --maf 0.1 --pca 2 --threads 1 --memory 640 --out pca
+    test -s pca.eigenvec
+    test -s pca.eigenval
+    ;;
+multiallelic)
+    printf '%b\n' '##fileformat=VCFv4.2' '##contig=<ID=1,length=1000>' '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">' '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts2\ts3\ts4' '1\t10\ttri\tA\tC,G\t.\tPASS\t.\tGT\t0|1\t1|2\t2|0\t1|2' > phased.vcf
+    run import plink2 --vcf phased.vcf --make-pgen --out phased --threads 1 --memory 640
+    run frequencies plink2 --pfile phased --freq --out freq --threads 1 --memory 640
+    stage=assert-frequency
+    awk 'BEGIN {ok=0} $2=="tri" && $3=="A" && $4=="C,G" && $5=="0.375,0.375" && $6==8 {ok=1} END {exit !ok}' freq.afreq
+    ;;
+subset)
+    printf '%b\n' '##fileformat=VCFv4.2' '##contig=<ID=1,length=1000>' '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">' '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts2' '1\t10\trs1\tA\tG\t50\tPASS\t.\tGT\t0/0\t0/1' '1\t20\trs2\tC\tT\t60\tPASS\t.\tGT\t0/1\t1/1' > tiny.vcf
+    gzip -c tiny.vcf > tiny.vcf.gz
+    run subset vcf_subset --in tiny.vcf.gz --out keep.vcf --indv s2
+    awk -F '\t' '/^#CHROM/ {if(NF==10 && $10=="s2") ok=1} END {exit !ok}' keep.vcf
+    printf '%s\n' rs2 > ids
+    run extract vcf_subset --in tiny.vcf --out extract.vcf --extract ids
+    run exclude vcf_subset --in tiny.vcf --out exclude.vcf --exclude ids
+    awk -F '\t' '!/^#/ {n++; if($3!="rs2") bad=1} END {exit !(n==1 && !bad)}' extract.vcf
+    awk -F '\t' '!/^#/ {n++; if($3!="rs1") bad=1} END {exit !(n==1 && !bad)}' exclude.vcf
+    ;;
+errors)
+    stage=invalid-mac
+    rc=0; plink2 --mac notanumber > bad.log 2>&1 || rc=$?
+    test "$rc" = 8
+    grep -F "Invalid --mac argument 'notanumber'" bad.log
+    stage=missing-file
+    rc=0; plink2 --pfile missing --freq --out absent --memory 640 > missing.log 2>&1 || rc=$?
+    test "$rc" -ne 0
+    grep -F Error missing.log
+    ;;
+resources)
+    run resource-help plink2-resources --help
+    run resource-dry plink2-resources install --member hgdp-grch38-chry-noannot-20260930 --dry-run
+    grep -F '5281419' resource-dry.log
+    rc=0; plink2-resources install --dry-run > select.log 2>&1 || rc=$?
+    test "$rc" -ne 0
+    grep -F -- '--member is required' select.log
+    ;;
+*) echo >&2 "unknown mode: $mode"; exit 2 ;;
+esac

@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "members": [
+    {
+      "id": "hgdp-grch38-chry-noannot-20260930",
+      "version": "PLINK-resources snapshot 2026-09-30; Bergstrom-2020 HGDP GRCh38",
+      "source": "https://www.cog-genomics.org/plink/2.0/resources#hgdp",
+      "license": "Upstream resource page: freely available with no restrictions on types of analyses; cite Bergstrom et al. (2020), Science 367. Data terms are separate from PLINK software licensing.",
+      "files": [
+        {
+          "name": "hgdp_chrY.pgen.zst",
+          "url": "https://www.dropbox.com/s/rlu5i82unhpcl5s/hgdp_chrY.pgen.zst?dl=1",
+          "sha256": "7d34d5d15b1b975c0893482223dc8d470ce47cbcbeb2929a48a48ec5bcb1c33f",
+          "bytes": 4403316
+        },
+        {
+          "name": "hgdp_chrY.pvar.zst",
+          "url": "https://www.dropbox.com/s/4uwcm48rowc0j38/hgdp_chrY_noannot.pvar.zst?dl=1",
+          "sha256": "7d29bea3bb1f3de02c194ce81ccb23cc4babfeb97579fd322a05c26e94fcf7f0",
+          "bytes": 842653
+        },
+        {
+          "name": "hgdp_chrY.psam",
+          "url": "https://www.dropbox.com/s/0zg57558fqpj3w1/hgdp.psam?dl=1",
+          "sha256": "d4ffa5e1307303858ad0a420b2a6682e71bb00cd057791d8a5a872143f738cc5",
+          "bytes": 35450
+        }
+      ]
+    }
+  ]
+}

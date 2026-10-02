@@ -1,0 +1,2 @@
+<taf-app:container:ghcr.io/taffish/plink2:2.0.0-a.7.10-r1>
+plink2 ::*ARGV*::
