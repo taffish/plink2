@@ -1,4 +1,4 @@
-plink2 2.0.0-a.7.10-r1
+plink2 2.0.0-a.7.11-r1
 
 Purpose:
   Genotype conversion, QC, allele frequencies, PCA and association analysis.

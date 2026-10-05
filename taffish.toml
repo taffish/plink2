@@ -1,7 +1,7 @@
 [package]
 name = "plink2"
 kind = "tool"
-version = "2.0.0-a.7.10"
+version = "2.0.0-a.7.11"
 release = 1
 license = "Apache-2.0"
 main = "src/main.taf"
@@ -17,7 +17,7 @@ pipe = true
 command_mode = true
 
 [container]
-image = "ghcr.io/taffish/plink2:2.0.0-a.7.10-r1"
+image = "ghcr.io/taffish/plink2:2.0.0-a.7.11-r1"
 dockerfile = "docker/Dockerfile"
 build_platforms = "linux/amd64,linux/arm64"
 
@@ -25,7 +25,7 @@ build_platforms = "linux/amd64,linux/arm64"
 domain = "bio"
 categories = ["genomics", "gwas", "population-genetics", "variant", "genotype"]
 keywords = ["PLINK 2.0", "plink2", "GWAS", "PGEN", "VCF", "BGEN", "genotype", "association", "population genetics"]
-description = "PLINK 2.0 alpha 7.10 command-line runtime for large-scale genotype data management, statistics, GWAS, PGEN workflows, and VCF sample or variant subsetting."
+description = "PLINK 2.0 alpha 7.11 command-line runtime for large-scale genotype data management, statistics, GWAS, PGEN workflows, and VCF sample or variant subsetting."
 
 [upstream]
 name = "PLINK 2.0"
@@ -33,10 +33,10 @@ type = "github"
 repo = "chrchang/plink-ng"
 homepage = "https://www.cog-genomics.org/plink/2.0/"
 manual = "https://www.cog-genomics.org/plink/2.0/"
-release_url = "https://github.com/chrchang/plink-ng/tree/v2.0.0-a.7.10"
-downloads = "https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.10.tar.gz"
-version = "2.0.0-a.7.10"
-commit = "5611170d0f1eaf9f4cf837ed49a0897fe25e130c"
+release_url = "https://github.com/chrchang/plink-ng/tree/v2.0.0-a.7.11"
+downloads = "https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.11.tar.gz"
+version = "2.0.0-a.7.11"
+commit = "5061eab9b72dc3c554f5f58fd756185c375963c2"
 license = "GPL-3.0-or-later for the PLINK 2.0 main application; LGPL-3.0-or-later for include libraries and vcf_subset; bundled SIMDe/libdeflate/zstd components retain their upstream licenses"
 citation = "Chang CC, Chow CC, Tellier LCAM, Vattikuti S, Purcell SM, Lee JJ. Second-generation PLINK: rising to the challenge of larger and richer datasets. GigaScience. 2015;4:7."
 doi = "10.1186/s13742-015-0047-8"
@@ -48,4 +48,4 @@ strip_prefix = "v"
 backend = "docker"
 timeout = 180
 exist = ["plink2", "vcf_subset", "plink2-resources", "plink2-smoke", "python3", "curl", "gzip", "awk", "grep", "sed", "ldd", "sh", "bash"]
-test = ["plink2-smoke identity", "plink2-smoke interface", "plink2-smoke linkage", "plink2-smoke core", "plink2-smoke multiallelic", "plink2-smoke subset", "plink2-smoke errors", "plink2-smoke resources"]
+test = ["plink2-smoke identity", "plink2-smoke interface", "plink2-smoke linkage", "plink2-smoke core", "plink2-smoke multiallelic", "plink2-smoke subset", "plink2-smoke errors", "plink2-smoke adjust", "plink2-smoke read-freq", "plink2-smoke update-map", "plink2-smoke resources"]

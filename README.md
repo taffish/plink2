@@ -1,29 +1,29 @@
 # plink2
 
-`plink2` packages PLINK 2.0 alpha 7.10 for TAFFISH.
+`plink2` packages PLINK 2.0 alpha 7.11 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-a.7.10-r1`
-- image: `ghcr.io/taffish/plink2:2.0.0-a.7.10-r1`
+- version: `2.0.0-a.7.11-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-a.7.11-r1`
 - license: Apache-2.0 for TAFFISH packaging
-- upstream tag: `v2.0.0-a.7.10`
-- runtime: `PLINK v2.0.0-a.7.10` and `vcf_subset v1.1.0`
+- upstream tag: `v2.0.0-a.7.11`
+- runtime: `PLINK v2.0.0-a.7.11` and `vcf_subset v1.1.0`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-a.7.10`, posted on 29 September 2026. The default command is `plink2`; the
+`v2.0.0-a.7.11`, posted on 1 October 2026. The default command is `plink2`; the
 same source tree also provides the upstream `vcf_subset` helper.
 
 This continues the existing alpha 7 maintenance track, not the separate beta 1
-development build. The a.7.3 to a.7.10 source delta includes sex/missingness,
-genotype import/export, regression/PCA projection, multiallelic-phased frequency
-and LD fixes, and clearer input-error diagnostics. Beta-only new commands are not
+development build. The a.7.10 to a.7.11 source delta fixes negative-position
+`--update-map`, mismatched-allele `--read-freq`, very small Sidak-adjusted P values,
+long alleles in `--adjust-file`, and malformed-input diagnostics. Beta-only new commands are not
 claimed. The dynamic build dependencies, `vcf_subset` 1.1.0 and layered software
 license set remain unchanged. No upstream algorithm/source patch is applied.
 
@@ -65,7 +65,7 @@ SSE4.2 instructions while still using OpenBLAS/LAPACK for linear algebra.
 
 Install the published package through your usual TAFFISH workflow. From a source
 checkout, `taf check` and `taf build` generate
-`target/taf-plink2-v2.0.0-a.7.10-r1`; building a local candidate is not publishing.
+`target/taf-plink2-v2.0.0-a.7.11-r1`; building a local candidate is not publishing.
 
 Access upstream help and version:
 
@@ -232,12 +232,14 @@ own provenance/hash; do not insert it into the immutable fixed member directory.
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-a.7.10`
-- Upstream commit: `5611170d0f1eaf9f4cf837ed49a0897fe25e130c`
+- Upstream tag: `v2.0.0-a.7.11`
+- Upstream commit: `5061eab9b72dc3c554f5f58fd756185c375963c2`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.10.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.11.tar.gz`
 - Source SHA256:
-  `d012e340e6fbdabcc77b57cb2e0d0f20181a759eb268fc51d3418410d819a272`
+  `6b83f2ff0a2d59ed9693c7270935d59893729f451831e60fc7b646d91042ddce`
+- Debian 12 slim base index:
+  `sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251`
 
 ## Boundaries
 
@@ -272,32 +274,35 @@ It does not replace validation on real GWAS cohorts, imputed dosage data,
 multi-phenotype association models, or production-scale reference panels.
 Additional checks cover exact runtime identity, multiallelic phased allele
 frequencies, PCA, malformed/missing input diagnostics, and resource selection.
+The a.7.11 regression modes cover small-P Sidak adjustment against an independent
+formula, missing TEST-column diagnostics, mismatched-allele frequency import,
+and negative-position removal with PGEN validation after `--update-map`.
+These are runtime checks; Docker build-time tests remain lightweight.
 Biobank-scale regressions, full-genome reference downloads, CUDA, Python/R API
 workflows and production site deployment are not claimed by tiny smoke.
-Native amd64 and arm64 app-root builds passed on 2026-09-30. The unchanged
-runtime candidate was revalidated on 2026-10-02: Docker and Podman passed on
+Native amd64 and arm64 app-root builds passed on 2026-10-03. Docker and Podman passed on
 both architectures, normal and read-only roots; native amd64 Apptainer passed
 with a read-only SIF from the same OCI.
-The rerun passed 198 exact fresh/offline probes, 125 real-wrapper checks, 20 intentional
+The candidate passed 225 exact fresh/offline probes, 125 real-wrapper checks, 35 intentional
 fault injections, and 16 resource-contract cases on each of five backend/platform
 routes. Real wrapper tests include PCA/GWAS, stdin/quoted paths, persistent output,
 fixed reference install/verify/decompression/frequencies and denied reference writes.
-HTTPS download/resume and read-only reuse by a second ordinary UID were additionally
-validated on 2026-09-30.
+Fresh HTTPS download, partial-download continuation and read-only reuse by a second
+ordinary UID were additionally validated on 2026-10-03. A control run against
+a.7.10 reproduced premature Sidak underflow, while a.7.11 passed the same fixture.
 Arm64 Apptainer is not separately validated; no architecture-specific mount/GPU/
 GUI coupling was found. No backend exception is used. Actual root/system-wide
 production deployment and entire resource-family scientific validation were not run.
 
-Final image sizes: amd64 188,940,433 bytes, arm64 191,710,913 bytes. Multi-stage
+Final image sizes: amd64 188,944,753 bytes, arm64 191,715,233 bytes. Multi-stage
 builds keep compiler/source archives out of final images; size is primarily linear
 algebra/runtime libraries and Python standard library. Runtime notices are retained;
 headers/apt cache are negligible (48 KiB/12 KiB), not removable large build payloads.
 
-Publication validation (2026-10-02): ordinary
-`taf publish --build --release --dry-run` passed with the updated local TAFFISH
-publisher (`remote: checked`, `outcome: planned`). The earlier publisher-side
-alpha-version ordering rejection no longer blocks this candidate; no version
-renaming or `--pre` bypass is required. These checks establish local readiness,
+Publication validation (2026-10-03): ordinary
+`taf publish --build --release --dry-run` passed (`remote: checked`, `outcome: planned`),
+without version renaming or a `--pre` bypass. The existing Action is unchanged and byte-identical to a freshly generated
+`taf new` canonical workflow. These checks establish local readiness,
 not actual publication, subsequent Action/GHCR/Index success or scientific acceptance.
 
 ## License and Citation

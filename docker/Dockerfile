@@ -1,9 +1,9 @@
-FROM debian:12-slim AS builder
+FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG PLINK2_VERSION=2.0.0-a.7.10
-ARG PLINK2_TAG=v2.0.0-a.7.10
-ARG PLINK2_SHA256=d012e340e6fbdabcc77b57cb2e0d0f20181a759eb268fc51d3418410d819a272
+ARG PLINK2_VERSION=2.0.0-a.7.11
+ARG PLINK2_TAG=v2.0.0-a.7.11
+ARG PLINK2_SHA256=6b83f2ff0a2d59ed9693c7270935d59893729f451831e60fc7b646d91042ddce
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -47,7 +47,7 @@ RUN set -eux; \
     chmod 0755 /opt/plink2/bin/plink2 /opt/plink2/bin/vcf_subset; \
     strip /opt/plink2/bin/plink2 /opt/plink2/bin/vcf_subset
 
-FROM debian:12-slim
+FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -77,7 +77,7 @@ RUN chmod 0755 /opt/plink2/bin/plink2-resources /opt/plink2/bin/plink2-smoke
 RUN set -eux; \
     ln -s /opt/plink2/bin/plink2 /usr/local/bin/plink2; \
     ln -s /opt/plink2/bin/vcf_subset /usr/local/bin/vcf_subset; \
-    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.10" >/dev/null; \
+    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.11" >/dev/null; \
     plink2 --help 2>&1 | grep -F -- "--make-pgen" >/dev/null; \
     vcf_subset --version 2>&1 | grep -F "vcf_subset v1.1.0" >/dev/null; \
     vcf_subset --help 2>&1 | grep -F "Usage: vcf_subset" >/dev/null; \
