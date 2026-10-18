@@ -1,29 +1,29 @@
 # plink2
 
-`plink2` packages PLINK 2.0 alpha 7.11 for TAFFISH.
+`plink2` packages PLINK 2.0 alpha 7.13 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-a.7.11-r1`
-- image: `ghcr.io/taffish/plink2:2.0.0-a.7.11-r1`
+- version: `2.0.0-a.7.13-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-a.7.13-r1`
 - license: Apache-2.0 for TAFFISH packaging
-- upstream tag: `v2.0.0-a.7.11`
-- runtime: `PLINK v2.0.0-a.7.11` and `vcf_subset v1.1.0`
+- upstream tag: `v2.0.0-a.7.13`
+- runtime: `PLINK v2.0.0-a.7.13` and `vcf_subset v1.1.0`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-a.7.11`, posted on 1 October 2026. The default command is `plink2`; the
+`v2.0.0-a.7.13`, posted on 15 October 2026. The default command is `plink2`; the
 same source tree also provides the upstream `vcf_subset` helper.
 
 This continues the existing alpha 7 maintenance track, not the separate beta 1
-development build. The a.7.10 to a.7.11 source delta fixes negative-position
-`--update-map`, mismatched-allele `--read-freq`, very small Sidak-adjusted P values,
-long alleles in `--adjust-file`, and malformed-input diagnostics. Beta-only new commands are not
+development build. The a.7.11 to a.7.13 source delta includes large-test-count
+adjustment, merge-filter defaults, allele/LD/column parsing fixes and a Mendelian
+error scan memory-write fix. Beta-only new commands are not
 claimed. The dynamic build dependencies, `vcf_subset` 1.1.0 and layered software
 license set remain unchanged. No upstream algorithm/source patch is applied.
 
@@ -65,7 +65,7 @@ SSE4.2 instructions while still using OpenBLAS/LAPACK for linear algebra.
 
 Install the published package through your usual TAFFISH workflow. From a source
 checkout, `taf check` and `taf build` generate
-`target/taf-plink2-v2.0.0-a.7.11-r1`; building a local candidate is not publishing.
+`target/taf-plink2-v2.0.0-a.7.13-r1`; building a local candidate is not publishing.
 
 Access upstream help and version:
 
@@ -121,6 +121,34 @@ command. For non-option-leading helper commands, use command mode:
 taf-plink2 vcf_subset --help
 ```
 
+### Paths Containing Spaces
+
+The current TAFFISH command wrapper assembles a shell command line. Ordinary
+shell quoting alone does not preserve an argument containing spaces: for
+example, `--out "my result"` is split before PLINK2 receives it. This is a
+wrapper boundary, not a PLINK2 input-format or analysis limitation.
+
+Prefer simple relative filenames. For a path containing spaces but no quotes
+or shell metacharacters, retain literal inner single quotes:
+
+```sh
+taf-plink2 -- --pfile "'my cohort'" --freq --out "'my result'"
+taf-plink2 plink2-resources verify --catalog "'chosen catalog.json'" \
+  --member synthetic-v1 --resource-root "'prepared root'"
+```
+
+The second example requires your own pinned catalog and its selected member;
+`synthetic-v1` is an example ID, not a bundled production reference. The same
+quoting applies to `--vcf`, `--source-dir` and other command/helper path options,
+and to explicit `taf-plink2 plink2 ...` command mode on all three backends.
+Do not extrapolate this simple-space workaround to quotes, dollar signs,
+backticks, newlines or other shell syntax: use a simple-named local copy or
+symlink to the input and a simple output prefix instead. Avoid untrusted shell
+text. Host discovery is different: set
+`TAFFISH_PLINK2_RESOURCE_PATH="/absolute/prepared root"` with normal shell quotes
+and **without** embedded quote characters. Manual backend run-argument strings
+retain their own quoting as shown below.
+
 ## Inputs
 
 | Input | Meaning | Notes |
@@ -173,10 +201,16 @@ links and are not redistributed in the image.
 The root must exist and be a persistent host directory (working-directory bind
 or explicit writable bind). Installation uses a root lock, private deterministic
 staging, two retries, curl Range continuation, SHA256/size verification, a per-member
-`receipt.json` and atomic same-filesystem promotion. Download concurrency is one.
+`receipt.json`, `SHA256SUMS` and `READY`, and atomic no-replace promotion.
+The private staging parent remains 0700 even when its completed child becomes
+0755; interruption in that window is recoverable. INT/TERM/HUP stop an owned
+download child and exit 130/143/129; installed members are never deleted.
+Download concurrency is one.
 Required free space is selected member bytes plus 16 MiB; decompression requires
 additional project space. Completed files are reused after hashing; partial files
 remain in `.partial-*`. A server refusing Range causes failure, not unsafe append.
+`--source-dir DIR` resumes missing, empty or matching-prefix offline files without
+relaxing the pinned SHA/size; mismatched prefixes are retained and rejected.
 Corruption fails closed. No destructive `--force`: preserve a damaged root for
 inspection and install into a new root; directory existence alone never passes.
 
@@ -187,13 +221,24 @@ are 0755, files 0644. Ensure all parents are traversable. Only the installer nee
 write access; ordinary users verify/read via a read-only bind. This helper never
 changes system permissions or installs into site directories automatically.
 
-Discovery/override decision: no automatic host reference discovery/mounting.
-Reference genotypes may be sensitive, and PLINK supports multiple scientifically
-distinct paths; exposing a user's/site's repository implicitly is undesirable.
-`TAFFISH_PLINK2_RESOURCE_PATH` below is only shell shorthand, not an interpreted
-app setting. Choose a root explicitly; unset backend run arguments to disable
-exposure. Resolve symlinks with `cd PATH && pwd -P` and use paths without spaces,
-colon or comma in the examples. Member selection always remains explicit.
+Discovery exposes only integrity-marked managed roots, not arbitrary project
+genotypes. Priority is explicit `TAFFISH_PLINK2_RESOURCE_PATH`, then the personal
+root, then `/usr/local/share`, then `/opt/taffish`. An existing but invalid root
+fails closed without searching lower priorities. A partial family is acceptable
+only when every installed member passes its recorded inventory/checksums; it
+does not imply the requested scientific member exists. Symlinks for the root are
+physically resolved; symlink members/files are rejected. Spaces are supported;
+colon/comma in host paths are rejected. Host `sha256sum` or `shasum` is required.
+Resources are mounted read-only at `/references` on all three backends; PLINK
+still requires explicit input/member paths. Set `TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT=0`
+to disable discovery, including during installation or manual binds. The wrapper
+does not parse scientific argv, inject an input choice, or download anything.
+
+Legacy a.7.11 roots have no integrity markers: use the explicit read-only manual
+fallback to consume them, or install exact files with `--source-dir` into a new
+managed root. The helper never silently rewrites an existing legacy or damaged
+member. Scratch `.partial-*` folders and the lock are not installed members;
+an interrupted empty private parent can be retained harmlessly.
 
 Runtime write map: project outputs, logs and conversion intermediates use the
 writable output prefix; smoke uses unique `/tmp`. Installed code/catalogs and
@@ -208,14 +253,16 @@ commands are otherwise identical. Both `linux/amd64` and `linux/arm64` are nativ
 source builds. Apptainer needs Linux; macOS uses Docker/Podman Linux VMs. No GPU,
 service, device or emulation flags are intrinsic requirements.
 
-Set `TAFFISH_PLINK2_RESOURCE_PATH` to the absolute prepared host root, then export
-the matching optional policy (append rather than overwrite existing site policy):
+Set `TAFFISH_PLINK2_RESOURCE_PATH` to an absolute managed root for automatic
+read-only exposure. For legacy/custom roots, export
+`TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT=0` and the matching manual policy (append
+rather than overwrite existing site policy; single quotes preserve spaces):
 
 | Backend | Read-only exposure |
 | --- | --- |
-| Docker | `TAFFISH_DOCKER_RUN_ARGS="-v $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro"` |
-| Podman | `TAFFISH_PODMAN_RUN_ARGS="-v $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro"` |
-| Apptainer | `TAFFISH_APPTAINER_RUN_ARGS="--bind $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro"` |
+| Docker | `TAFFISH_DOCKER_RUN_ARGS="--volume '$TAFFISH_PLINK2_RESOURCE_PATH:/references:ro'"` |
+| Podman | `TAFFISH_PODMAN_RUN_ARGS="--volume '$TAFFISH_PLINK2_RESOURCE_PATH:/references:ro'"` |
+| Apptainer | `TAFFISH_APPTAINER_RUN_ARGS="--bind '$TAFFISH_PLINK2_RESOURCE_PATH:/references:ro'"` |
 
 ```sh
 taf-plink2 plink2-resources verify --resource-root /references --member hgdp-grch38-chry-noannot-20260930
@@ -232,14 +279,21 @@ own provenance/hash; do not insert it into the immutable fixed member directory.
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-a.7.11`
-- Upstream commit: `5061eab9b72dc3c554f5f58fd756185c375963c2`
+- Upstream tag: `v2.0.0-a.7.13`
+- Upstream commit: `b3a93fafb680aa8134f2df3b06b0c188bda0bae8`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.11.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.13.tar.gz`
 - Source SHA256:
-  `6b83f2ff0a2d59ed9693c7270935d59893729f451831e60fc7b646d91042ddce`
+  `d125cd76cc284aa41c133add511b5030413e764b40d731fd38588dbd5104c6f6`
 - Debian 12 slim base index:
   `sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251`
+
+These identities do not archive upstream materials permanently. Debian APT
+repositories remain active; the final installed package inventory is evidence,
+not an input lock. Source/resource 404, TLS/transport failure and hash mismatch
+must be distinguished. Recover old bytes only from a matching trusted copy;
+new materials require a new reviewed identity and full validation, never skipped
+checksums. Relevant Dockerfile instructions carry maintenance notes.
 
 ## Boundaries
 
@@ -280,30 +334,57 @@ and negative-position removal with PGEN validation after `--update-map`.
 These are runtime checks; Docker build-time tests remain lightweight.
 Biobank-scale regressions, full-genome reference downloads, CUDA, Python/R API
 workflows and production site deployment are not claimed by tiny smoke.
-Native amd64 and arm64 app-root builds passed on 2026-10-03. Docker and Podman passed on
-both architectures, normal and read-only roots; native amd64 Apptainer passed
-with a read-only SIF from the same OCI.
-The candidate passed 225 exact fresh/offline probes, 125 real-wrapper checks, 35 intentional
-fault injections, and 16 resource-contract cases on each of five backend/platform
-routes. Real wrapper tests include PCA/GWAS, stdin/quoted paths, persistent output,
-fixed reference install/verify/decompression/frequencies and denied reference writes.
-Fresh HTTPS download, partial-download continuation and read-only reuse by a second
-ordinary UID were additionally validated on 2026-10-03. A control run against
-a.7.10 reproduced premature Sidak underflow, while a.7.11 passed the same fixture.
-Arm64 Apptainer is not separately validated; no architecture-specific mount/GPU/
-GUI coupling was found. No backend exception is used. Actual root/system-wide
-production deployment and entire resource-family scientific validation were not run.
+Current a.7.13-r1 validation (2026-10-16) uses the current candidate, not historical
+a.7.11 receipts. Repository-root native Docker builds passed on amd64 and arm64.
+The 27 exact probes (combined existence, 14 individual existence, 12 tests) passed
+in all nine groups: Docker/Podman normal and read-only on both architectures,
+plus the amd64 read-only Apptainer SIF from the same OCI content (243 commands).
+Real wrapper checks passed on amd64 Docker/Podman/Apptainer and arm64 Podman
+(120 checks), with final frozen-help/runtime/file-SHA/failure-log rechecks.
+The additional arm64 Docker wrapper run was interrupted by Docker Desktop
+becoming unavailable; it is not recorded as a completed combination. Native
+arm64 build/exact smoke and the Docker backend axis are independently complete.
+ARM64 Apptainer is not separately validated; no architecture-specific resource
+or service dependency is claimed.
 
-Final image sizes: amd64 188,944,753 bytes, arm64 191,715,233 bytes. Multi-stage
-builds keep compiler/source archives out of final images; size is primarily linear
-algebra/runtime libraries and Python standard library. Runtime notices are retained;
-headers/apt cache are negligible (48 KiB/12 KiB), not removable large build payloads.
+Closeout rechecked the current frozen help and its literal-quote examples on
+amd64 Docker/Podman/Apptainer and arm64 Podman: 19 targeted checks per route
+(76 total), plus 30 full wrapper checks and seven final identity/failure-log
+checks per route. The ordinary-quote negative case is recorded as an expected
+failure, not silently treated as supported argv behavior. The unchanged image
+content also passed 135 fresh amd64 exact probes and 27 arm64 Podman read-only
+probes during closeout; earlier native builds and the other exact groups remain
+bound to the same Dockerfile, manifest and image contents.
 
-Publication validation (2026-10-03): ordinary
-`taf publish --build --release --dry-run` passed (`remote: checked`, `outcome: planned`),
-without version renaming or a `--pre` bypass. The existing Action is unchanged and byte-identical to a freshly generated
-`taf new` canonical workflow. These checks establish local readiness,
-not actual publication, subsequent Action/GHCR/Index success or scientific acceptance.
+Resource discovery has 57 isolated contract checks on each of macOS and Linux.
+Only the two fixed site-root literals are mapped into private test directories;
+the remaining production function is verified byte-for-byte. Tests cover root
+priority, invalid higher-priority roots without fallback, symlinks, disable and
+space-containing physical paths. Selected physical roots are then paired with
+the actual wrapper's read-only mounts on all three backends. This validates the
+selection contract and backend binding separately; it is not a claim that the
+production `/usr/local/share` or `/opt/taffish` directories were deployed.
+
+On amd64, seven resource interruption windows across INT/TERM/HUP passed on
+all three backends (63 interruptions; 252 install/interrupt/recover/idempotent
+receipts). Valid old members remained unchanged. Another 41 checks cover
+private root-owned once-only installation, ordinary-user read-only reuse,
+actual HTTPS/empty partial downloads, missing/bad/duplicate inventories and
+recovery. The fixed GitHub software archive endpoint refused Range with curl 33;
+the prefix was preserved, no member was promoted, and the exact offline source
+recovered successfully. This is not a claim of successful HTTP Range service.
+No production reference callset was downloaded or analyzed in this update.
+Full production references, real-cohort correctness and actual production
+system deployment remain outside the evidence.
+
+Final image sizes: amd64 188,956,779 bytes; arm64 196,438,736 bytes.
+Runtime libraries dominate (/usr/lib approximately 137/131 MiB); PLINK2 itself
+uses approximately 4.5/3.9 MiB. Multi-stage builds exclude compiler/source archives;
+APT indexes/cache are empty or negligible, and headers only 48/44 KiB.
+Runtime and dependency license notices are retained rather than deleted for size.
+The existing Action is unchanged and byte-identical to fresh `taf new` output.
+Readiness, actual publication, Action/GHCR/Index success and scientific acceptance
+remain separate gates.
 
 ## License and Citation
 

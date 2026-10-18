@@ -1,7 +1,6 @@
-plink2 2.0.0-a.7.11-r1
+plink2 2.0.0-a.7.13-r1
 
-Purpose:
-  Genotype conversion, QC, allele frequencies, PCA and association analysis.
+Purpose: Genotype conversion, QC, allele frequencies, PCA and association analysis.
 
 Usage:
   taf-plink2 -- --help
@@ -19,6 +18,9 @@ Inputs and options:
   --out PREFIX       Writable output prefix, including the .log file.
   --threads N        CPU limit. --memory N sets workspace MiB, not total RAM.
   --seed N           Fix random seed where applicable.
+  Paths with spaces need inner quotes, including helper path options:
+  taf-plink2 -- --pfile "'my cohort'" --freq --out "'my result'"
+  Use simple names for quotes or shell metacharacters; see README for details.
 
 Key outputs:
   .pgen/.pvar/.psam   Genotype datasets.
@@ -32,38 +34,38 @@ Choose backend (same analysis commands):
   TAFFISH_CONTAINER_BACKEND=apptainer taf-plink2 -- --version
   Apptainer needs native Linux; Docker/Podman also work through their Mac VM.
 
-Optional reference resources:
-  List fixed members; no resource is chosen or downloaded by default:
+Optional reference resources (no default download):
   taf-plink2 plink2-resources list
   taf-plink2 plink2-resources install \
     --member hgdp-grch38-chry-noannot-20260930 --dry-run
   Prepare a persistent directory, then run from its parent:
   mkdir -p plink2-resources
-  taf-plink2 plink2-resources install \
+  TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT=0 taf-plink2 plink2-resources install \
     --member hgdp-grch38-chry-noannot-20260930 --resource-root plink2-resources
-  The same command verifies/skips a complete install. Partial downloads resume;
-  a checksum mismatch fails closed. See README for a custom pinned catalog.
+  The same command verifies/skips a complete install. HTTP resume needs Range;
+  a checksum mismatch fails closed. --source-dir DIR uses exact offline files.
   Personal root: ~/.local/share/taffish/resources/plink2
   Shared root: /usr/local/share/taffish/resources/plink2 (admin prepares once).
-  Users need read/traverse permissions; only the installer needs write access.
 
-Read an already prepared root (replace the host path; all mounts are read-only):
+Read a prepared root (automatic mounts are read-only):
   export TAFFISH_PLINK2_RESOURCE_PATH=/usr/local/share/taffish/resources/plink2
   TAFFISH_CONTAINER_BACKEND=docker \
-    TAFFISH_DOCKER_RUN_ARGS="-v $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro" \
     taf-plink2 plink2-resources verify --resource-root /references \
     --member hgdp-grch38-chry-noannot-20260930
   TAFFISH_CONTAINER_BACKEND=podman \
-    TAFFISH_PODMAN_RUN_ARGS="-v $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro" \
     taf-plink2 plink2-resources verify --resource-root /references \
     --member hgdp-grch38-chry-noannot-20260930
   TAFFISH_CONTAINER_BACKEND=apptainer \
-    TAFFISH_APPTAINER_RUN_ARGS="--bind $TAFFISH_PLINK2_RESOURCE_PATH:/references:ro" \
     taf-plink2 plink2-resources verify --resource-root /references \
     --member hgdp-grch38-chry-noannot-20260930
-  No automatic mount/discovery: the variable above is only your shell shorthand.
-  Unset backend RUN_ARGS to stop mounting. Use host paths without spaces.
-  Keep these mount settings for analysis. Decompress .pgen.zst into your workdir:
+  Discovery: personal -> /usr/local/share -> /opt/taffish; bad roots fail closed.
+  Set TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT=0 for setup or manual mounts.
+  Explicit legacy/custom mount fallback, with AUTO_MOUNT=0 (HOST is absolute):
+  Docker: TAFFISH_DOCKER_RUN_ARGS="--volume 'HOST:/references:ro'"
+  Podman: TAFFISH_PODMAN_RUN_ARGS="--volume 'HOST:/references:ro'"
+  Apptainer: TAFFISH_APPTAINER_RUN_ARGS="--bind 'HOST:/references:ro'"
+  Export the matching variable; colon/comma in host paths are not supported.
+  Decompress .pgen.zst into your writable workdir:
   taf-plink2 -- --zst-decompress \
     /references/hgdp-grch38-chry-noannot-20260930/hgdp_chrY.pgen.zst hgdp_chrY.pgen
   Use --pgen hgdp_chrY.pgen --pvar /references/MEMBER/hgdp_chrY.pvar.zst
@@ -72,7 +74,7 @@ Read an already prepared root (replace the host path; all mounts are read-only):
 Immediate notes:
   Alpha 7 maintenance build, not beta 1 or PLINK 1.9. Review upstream caveats.
   PGEN does not preserve genotype-probability triplets, read depths or quality.
-  Choose reference callset/build/sample policy explicitly; chrY is not a genome.
+  Choose reference callset/build explicitly; chrY is not a genome.
   Run from a writable project directory; missing local input does not download.
 
 More help:

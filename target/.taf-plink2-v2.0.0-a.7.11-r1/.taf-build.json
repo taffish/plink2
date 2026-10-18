@@ -1,6 +1,0 @@
-{
-  "artifact": "taf-plink2-v2.0.0-a.7.11-r1",
-  "schema": "taffish.build/v1",
-  "source_sha256": "894e3360e410ac02c8c1e022c1a256893fa0bef83d8dfe4879bfd2589da63c12",
-  "wrapper_sha256": "214612a8eec25b0c5da664776c6a966f89ab23bacffd0b4329e53ad997236239"
-}

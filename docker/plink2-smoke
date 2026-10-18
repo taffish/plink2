@@ -26,15 +26,15 @@ run() { stage=$1; shift; "$@" > "$stage.log" 2>&1; }
 case "$mode" in
 identity)
     stage=identity
-    grep -Fx 'PLINK 2.0 2.0.0-a.7.11' /opt/plink2/share/doc/plink2/source.txt
-    grep -Fx 'SHA256: 6b83f2ff0a2d59ed9693c7270935d59893729f451831e60fc7b646d91042ddce' /opt/plink2/share/doc/plink2/source.txt
+    grep -Fx 'PLINK 2.0 2.0.0-a.7.13' /opt/plink2/share/doc/plink2/source.txt
+    grep -Fx 'SHA256: d125cd76cc284aa41c133add511b5030413e764b40d731fd38588dbd5104c6f6' /opt/plink2/share/doc/plink2/source.txt
     for f in COPYING COPYING.LESSER simde-COPYING libdeflate-COPYING zstd-COPYING zstd-LICENSE; do
         test -s "/opt/plink2/share/licenses/plink2/$f"
     done
     ;;
 interface)
     run version plink2 --version
-    grep -Fx 'PLINK v2.0.0-a.7.11 64-bit (1 Oct 2026)' version.log
+    grep -Fx 'PLINK v2.0.0-a.7.13 64-bit (15 Oct 2026)' version.log
     run help plink2 --help
     for opt in --make-pgen --glm --pca --hardy --export; do grep -F -- "$opt" help.log >/dev/null; done
     run subset-version vcf_subset --version
@@ -126,6 +126,30 @@ update-map)
     stage=assert-updated-positions
     awk '!/^#/ {n++; if($2!=100 && $2!=300) bad=1} END {exit !(n==2 && !bad)}' mapped.pvar
     run validate plink2 --pfile mapped --validate --memory 640
+    ;;
+mendel)
+    # 合成家系及低频非子代基因型；检查 a.7.13 修复附近路径，不使用真实研究数据。
+    stage=fixture
+    python3 - <<'PY'
+from pathlib import Path
+ids = ['father', 'mother', 'child'] + ['other' + str(i) for i in range(97)]
+header = '##fileformat=VCFv4.2\n##contig=<ID=1,length=1000>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+header += '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t' + '\t'.join(ids) + '\n'
+rows = []
+for i in range(20):
+    calls = ['0/0'] * 100
+    calls[2] = '1/1'
+    calls[3] = '0/1'
+    rows.append('1\t' + str(i+1) + '\tv' + str(i) + '\tA\tG\t.\tPASS\t.\tGT\t' + '\t'.join(calls))
+Path('trios.vcf').write_text(header + '\n'.join(rows) + '\n')
+Path('parents.txt').write_text('F child father mother\n')
+Path('sex.txt').write_text('F father 1\nF mother 2\nF child 1\n')
+PY
+    run import plink2 --vcf trios.vcf --const-fid F --make-pgen --out raw --memory 640 --threads 1
+    run parents plink2 --pfile raw --update-parents parents.txt --update-sex sex.txt --make-pgen --out family --memory 640 --threads 1
+    run mendel plink2 --pfile family --mendel --out errors --memory 640 --threads 1
+    test -s errors.mendel
+    grep -F '20' errors.fmendel
     ;;
 resources)
     run resource-help plink2-resources --help

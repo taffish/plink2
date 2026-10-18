@@ -28,7 +28,8 @@ with tempfile.TemporaryDirectory(prefix='plink2-resource-test-') as td:
     run('selector-required',['install','--catalog',str(catalog),'--dry-run'],1,'--member is required')
     run('missing-root',['install',*args[:-2],'--resource-root',str(t/'absent'),'--member','tiny-v1'],1,'existing actual')
     key=hashlib.sha256(json.dumps(m,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-    stage=root/('.partial-'+key); stage.mkdir(mode=0o700)
+    partial=root/('.partial-'+key); partial.mkdir(mode=0o700)
+    stage=partial/'member'; stage.mkdir(mode=0o700)
     (stage/'tiny.txt').write_bytes(payload)
     lock=open(root/'.plink2-resources.lock','w'); fcntl.flock(lock,fcntl.LOCK_EX)
     run('lock-refusal',['install',*args],1,'locked')
@@ -56,4 +57,26 @@ with tempfile.TemporaryDirectory(prefix='plink2-resource-test-') as td:
         bad=json.loads(json.dumps(m)); bad['files'][0][field]=value
         catalog.write_text(json.dumps(dict(schema=1,members=[bad])))
         run('reject-'+field,['install',*args,'--dry-run'],1)
+    catalog.write_text(json.dumps(dict(schema=1,members=[m])))
+    source=t/'source'; source.mkdir(); (source/'tiny.txt').write_bytes(payload)
+    for label, prefix in [('empty',b''),('prefix',payload[:5]),('absent',None),('bad-prefix',b'BAD')]:
+        newroot=t/label; newroot.mkdir()
+        part=newroot/('.partial-'+key); part.mkdir(mode=0o700)
+        staged=part/'member'; staged.mkdir(mode=0o700)
+        if prefix is not None: (staged/'tiny.txt').write_bytes(prefix)
+        extra=['--catalog',str(catalog),'--resource-root',str(newroot),'--member','tiny-v1','--source-dir',str(source)]
+        run('resume-'+label,['install',*extra],1 if label=='bad-prefix' else 0)
+        if label=='bad-prefix':
+            assert (staged/'tiny.txt').read_bytes()==prefix
+        else:
+            run('resume-idempotent-'+label,['install',*extra],marker='VERIFIED')
+            assert not part.exists()
+    # 并发外部创建的空目标也不可覆盖。
+    import importlib.machinery
+    mod=importlib.machinery.SourceFileLoader('resources',helper).load_module()
+    a=t/'promotion'; b=t/'existing'; a.mkdir(); b.mkdir(); (a/'keep').write_text('x')
+    try: mod.promote(a,b)
+    except OSError: pass
+    else: raise AssertionError('promotion overwrote existing directory')
+    assert (a/'keep').read_text()=='x' and b.is_dir()
     print('PASS',len(cases),'resource contract tests')

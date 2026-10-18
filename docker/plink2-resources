@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """显式、固定清单的参考资源安装；不替用户选择科学数据。"""
 import argparse
+import ctypes
 import fcntl
 import hashlib
 import json
@@ -8,10 +9,57 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 
 CATALOG = Path('/opt/plink2/share/resources.json')
+MARKERS = {'receipt.json', 'SHA256SUMS', 'READY'}
+
+class Interrupted(Exception):
+    def __init__(self, signum):
+        self.signum = signum
+
+def interrupt(signum, frame):
+    # Apptainer/终端可能重复转发同一次中断；首次信号确定退出码，后续信号不打断有界清理。
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, signal.SIG_IGN)
+    raise Interrupted(signum)
+
+def download(cmd):
+    # 子进程登记前屏蔽信号；子进程使用独立 session，父进程只清理本次 PID。
+    signals = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+    child = None
+    try:
+        child = subprocess.Popen(cmd, start_new_session=True,
+                                 preexec_fn=lambda: signal.pthread_sigmask(signal.SIG_SETMASK, previous))
+    finally:
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+        except BaseException:
+            if child is not None and child.poll() is None:
+                child.terminate()
+                child.wait(timeout=10)
+            raise
+    try:
+        return child.wait()
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+
+def promote(stage, target):
+    # Linux 镜像上的原子且禁止覆盖 promotion；即使目标是空目录也不替换。
+    libc = ctypes.CDLL(None, use_errno=True)
+    rename = libc.renameat2
+    if rename(-100, os.fsencode(stage), -100, os.fsencode(target), 1):
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), str(target))
 
 def digest(path):
     h = hashlib.sha256()
@@ -37,7 +85,7 @@ def load_catalog(path):
         names = set()
         for f in m['files']:
             name = f['name']
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) or name in names or name == 'receipt.json':
+            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) or name in names or name in MARKERS:
                 raise ValueError('invalid or duplicate filename')
             names.add(name)
             if not f['url'].startswith('https://') or not re.fullmatch('[0-9a-f]{64}', f['sha256']):
@@ -46,7 +94,7 @@ def load_catalog(path):
                 raise ValueError('positive fixed byte count required')
     return data
 
-def verify(member, target):
+def verify(member, target, markers=True):
     if target.is_symlink() or not target.is_dir():
         raise ValueError('not a regular installed member directory')
     receipt = target / 'receipt.json'
@@ -54,12 +102,21 @@ def verify(member, target):
         raise ValueError('missing regular receipt')
     if json.loads(receipt.read_text()) != member:
         raise ValueError('receipt does not match selected fixed member')
-    if {x.name for x in target.iterdir()} != {'receipt.json'} | {f['name'] for f in member['files']}:
+    expected = (MARKERS if markers else {'receipt.json'}) | {f['name'] for f in member['files']}
+    if {x.name for x in target.iterdir()} != expected:
         raise ValueError('unexpected or missing files')
     for f in member['files']:
         path = target / f['name']
         if path.is_symlink() or not path.is_file() or path.stat().st_size != f['bytes'] or digest(path) != f['sha256']:
             raise ValueError('checksum/size mismatch: ' + f['name'])
+    if markers:
+        for name in ('SHA256SUMS', 'READY'):
+            if (target / name).is_symlink() or not (target / name).is_file():
+                raise ValueError('missing regular integrity marker')
+        sums = ''.join(digest(target / name) + '  ' + name + '\n'
+                       for name in sorted({'receipt.json'} | {f['name'] for f in member['files']}))
+        if (target / 'SHA256SUMS').read_text() != sums or (target / 'READY').read_text() != digest(target / 'SHA256SUMS') + '\n':
+            raise ValueError('integrity marker mismatch')
 
 def main():
     p = argparse.ArgumentParser(description='Install explicitly selected checksum-pinned PLINK reference members; never downloads all by default.')
@@ -68,6 +125,7 @@ def main():
     p.add_argument('--member', action='append', help='required explicit member ID; repeat to select multiple')
     p.add_argument('--resource-root', type=Path, help='existing writable host-bound directory for install; read-only directory for verify')
     p.add_argument('--dry-run', action='store_true')
+    p.add_argument('--source-dir', type=Path, help='offline directory containing the exact catalog files; checksum rules unchanged')
     a = p.parse_args()
     data = load_catalog(a.catalog)
     if a.action == 'list':
@@ -96,13 +154,19 @@ def main():
                 raise ValueError('resource root is locked; retry after the other installer finishes')
             if target.exists() or target.is_symlink():
                 verify(m, target); print('VERIFIED ' + m['id']); continue
-            stage = root / ('.partial-' + hashlib.sha256(canonical(m)).hexdigest())
-            if stage.is_symlink():
+            partial = root / ('.partial-' + hashlib.sha256(canonical(m)).hexdigest())
+            if partial.is_symlink():
                 raise ValueError('refusing symlink staging directory')
-            stage.mkdir(mode=0o700, exist_ok=True)
-            if stage.stat().st_uid != os.getuid() or stage.stat().st_mode & 0o077:
+            partial.mkdir(mode=0o700, exist_ok=True)
+            if partial.stat().st_uid != os.getuid() or partial.stat().st_mode & 0o077:
                 raise ValueError('staging must be private and owned by this installer')
-            allowed = {f['name'] for f in m['files']} | {'receipt.json'}
+            if any(x.name != 'member' for x in partial.iterdir()):
+                raise ValueError('unexpected staging content; preserve legacy partial and use a new root')
+            stage = partial / 'member'
+            if stage.is_symlink():
+                raise ValueError('refusing symlink member staging')
+            stage.mkdir(mode=0o700, exist_ok=True)
+            allowed = {f['name'] for f in m['files']} | MARKERS
             if any(x.is_symlink() or not x.is_file() or x.name not in allowed for x in stage.iterdir()):
                 raise ValueError('unexpected staging content')
             required = sum(f['bytes'] for f in m['files']) + 16 * 1024**2
@@ -115,23 +179,51 @@ def main():
                     continue
                 if dst.exists() and dst.stat().st_size >= f['bytes']:
                     raise ValueError('corrupt cached file; preserve evidence and use a new root: ' + str(dst))
-                cmd = ['curl', '--fail', '--location', '--proto', '=https', '--proto-redir', '=https', '--retry', '2', '--connect-timeout', '30', '--speed-time', '60', '--speed-limit', '1024', '--continue-at', '-', '--output', str(dst), f['url']]
-                r = subprocess.run(cmd)
-                if r.returncode:
-                    raise ValueError('download failed exit=' + str(r.returncode) + '; partial retained for resume at ' + str(stage))
+                print('FETCH ' + f['name'] + ' (partial retained on interruption)', flush=True)
+                if a.source_dir:
+                    source = a.source_dir / f['name']
+                    if source.is_symlink() or not source.is_file() or source.stat().st_size != f['bytes'] or digest(source) != f['sha256']:
+                        raise ValueError('offline source checksum/size mismatch')
+                    with source.open('rb') as src:
+                        if dst.exists():
+                            with dst.open('rb') as old:
+                                for chunk in iter(lambda: old.read(1024 * 1024), b''):
+                                    if src.read(len(chunk)) != chunk:
+                                        raise ValueError('partial prefix mismatch; retained without overwrite')
+                        with dst.open('ab' if dst.exists() else 'xb') as out:
+                            shutil.copyfileobj(src, out, 1024 * 1024)
+                            out.flush(); os.fsync(out.fileno())
+                else:
+                    cmd = ['curl', '--fail', '--location', '--proto', '=https', '--proto-redir', '=https', '--retry', '2', '--connect-timeout', '30', '--speed-time', '60', '--speed-limit', '1024', '--continue-at', '-', '--output', str(dst), f['url']]
+                    rc = download(cmd)
+                    if rc:
+                        raise ValueError('download failed exit=' + str(rc) + '; partial retained for resume at ' + str(stage))
                 if dst.stat().st_size != f['bytes'] or digest(dst) != f['sha256']:
                     raise ValueError('download checksum mismatch; no install promoted')
                 dst.chmod(0o644)
             (stage / 'receipt.json').write_text(json.dumps(m, indent=2) + '\n')
             (stage / 'receipt.json').chmod(0o644)
+            # 重试允许重建完整性标记；不删除任何已安装成员或下载内容。
+            sums = ''.join(digest(stage / name) + '  ' + name + '\n'
+                           for name in sorted({'receipt.json'} | {f['name'] for f in m['files']}))
+            (stage / 'SHA256SUMS').write_text(sums)
+            (stage / 'READY').write_text(digest(stage / 'SHA256SUMS') + '\n')
+            for name in MARKERS:
+                (stage / name).chmod(0o644)
             verify(m, stage)
             stage.chmod(0o755)
-            stage.rename(target)
+            promote(stage, target)
+            partial.rmdir()
             print('INSTALLED ' + str(target))
 
 if __name__ == '__main__':
     try:
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(signum, interrupt)
         main()
+    except Interrupted as e:
+        print('plink2-resources: interrupted; partial retained, old members unchanged', file=sys.stderr)
+        sys.exit(128 + e.signum)
     except (ValueError, KeyError, OSError) as e:
         print('plink2-resources: ERROR: ' + str(e), file=sys.stderr)
         sys.exit(1)

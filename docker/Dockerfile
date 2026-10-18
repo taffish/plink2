@@ -1,10 +1,12 @@
 FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG PLINK2_VERSION=2.0.0-a.7.11
-ARG PLINK2_TAG=v2.0.0-a.7.11
-ARG PLINK2_SHA256=6b83f2ff0a2d59ed9693c7270935d59893729f451831e60fc7b646d91042ddce
+ARG PLINK2_VERSION=2.0.0-a.7.13
+ARG PLINK2_TAG=v2.0.0-a.7.13
+ARG PLINK2_SHA256=d125cd76cc284aa41c133add511b5030413e764b40d731fd38588dbd5104c6f6
 
+# 基础镜像 digest 不锁定活动 APT 仓库；包修订/可得性可能变化。先区分网络、索引与下架，
+# 核对 Debian 官方来源和架构；采用新依赖须重建双架构并复验离线 smoke/真实 wrapper。
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -18,6 +20,8 @@ RUN apt-get update \
 
 WORKDIR /tmp/plink2-build
 
+# 固定 tag+SHA256 不保证永久可下载。404/TLS/截断先分类；旧材料仅接受同 SHA256 可信副本。
+# 若采用新源码，核实 tag/commit/许可后更新上述身份并全量重验，不跳过校验或盲目重算哈希。
 RUN set -eux; \
     curl -fsSL "https://github.com/chrchang/plink-ng/archive/refs/tags/${PLINK2_TAG}.tar.gz" -o plink2.tar.gz; \
     echo "${PLINK2_SHA256}  plink2.tar.gz" | sha256sum -c -; \
@@ -51,6 +55,7 @@ FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e36870
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# final APT 仍为活动仓库，非完整输入 lock；同 builder 的排查/更新门，已发布身份用后继修复。
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -68,6 +73,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/plink2 /opt/plink2
+# helper 的 resources.json 固定 URL/大小/SHA，但第三方资源仍可能下架；保留许可边界。
+# 下载失败不改 checksum；可信旧副本可用 --source-dir，新资源需新 catalog 身份和完整重验。
 COPY docker/plink2-resources /opt/plink2/bin/plink2-resources
 COPY docker/resources.json /opt/plink2/share/resources.json
 COPY docker/plink2-smoke /opt/plink2/bin/plink2-smoke
@@ -77,7 +84,7 @@ RUN chmod 0755 /opt/plink2/bin/plink2-resources /opt/plink2/bin/plink2-smoke
 RUN set -eux; \
     ln -s /opt/plink2/bin/plink2 /usr/local/bin/plink2; \
     ln -s /opt/plink2/bin/vcf_subset /usr/local/bin/vcf_subset; \
-    plink2 --version 2>&1 | grep -F "PLINK v2.0.0-a.7.11" >/dev/null; \
+    plink2 --version 2>&1 | grep -Fx "PLINK v2.0.0-a.7.13 64-bit (15 Oct 2026)" >/dev/null; \
     plink2 --help 2>&1 | grep -F -- "--make-pgen" >/dev/null; \
     vcf_subset --version 2>&1 | grep -F "vcf_subset v1.1.0" >/dev/null; \
     vcf_subset --help 2>&1 | grep -F "Usage: vcf_subset" >/dev/null; \
