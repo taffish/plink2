@@ -1,31 +1,39 @@
 # plink2
 
-`plink2` packages PLINK 2.0 alpha 7.13 for TAFFISH.
+`plink2` packages the tagged PLINK 2.0 beta 1.0 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-a.7.13-r1`
-- image: `ghcr.io/taffish/plink2:2.0.0-a.7.13-r1`
+- version: `2.0.0-b.1.0-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-b.1.0-r1`
 - license: Apache-2.0 for TAFFISH packaging
-- upstream tag: `v2.0.0-a.7.13`
-- runtime: `PLINK v2.0.0-a.7.13` and `vcf_subset v1.1.0`
+- upstream tag: `v2.0.0-b.1.0`
+- runtime: `PLINK v2.0.0-b.1.0`, `vcf_subset v1.1.0`, `ldsc (plink-ng) v0.1`,
+  `mtag (plink-ng) v0.1`, and same-tag `pgen_compress`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-a.7.13`, posted on 15 October 2026. The default command is `plink2`; the
-same source tree also provides the upstream `vcf_subset` helper.
+`v2.0.0-b.1.0`, posted on 19 October 2026. The default command is `plink2`; the
+same source tree also supplies `vcf_subset`, `ldsc`, `mtag` and `pgen_compress`.
 
-This continues the existing alpha 7 maintenance track, not the separate beta 1
-development build. The a.7.11 to a.7.13 source delta includes large-test-count
-adjustment, merge-filter defaults, allele/LD/column parsing fixes and a Mendelian
-error scan memory-write fix. Beta-only new commands are not
-claimed. The dynamic build dependencies, `vcf_subset` 1.1.0 and layered software
-license set remain unchanged. No upstream algorithm/source patch is applied.
+This moves from alpha 7.13 to the versioned beta 1.0 release, not a rolling beta
+development snapshot. GitHub marks this tag non-prerelease; the official site
+announces the end of beta 1 feature development. This is still upstream's beta
+software, not a claim of a final PLINK 2 release or universal scientific validity.
+No upstream algorithm/source patch is applied.
+The maintainer explicitly approved this alpha-to-tagged-beta transition on
+20 October 2026. The tag watcher is only a discovery hint; future beta/RC or
+prerelease candidates still require review, not an automatic stable designation.
+
+Compatibility changes include low-MAF checks for PCA/GRM (`--grm-maf` makes
+filtering explicit), stronger allele-uniqueness validation and new output/merge
+paths. New PGEN features may not work with very old readers. Review upstream
+release notes and keep the old version for reproducible existing analyses.
 
 ## Scope
 
@@ -37,6 +45,8 @@ This app supports:
 - Common QC/statistics/GWAS operations such as `--freq`, `--hardy`, `--missing`,
   `--pca`, `--glm`, `--make-pgen`, `--make-bed`, and `--export`.
 - VCF sample and variant-ID subsetting through `vcf_subset`.
+- Upstream C++ `ldsc` and `mtag` utilities for explicitly supplied summary
+  statistics and LD-score inputs; these are not the separate Python projects.
 
 This app does not package:
 
@@ -48,9 +58,13 @@ This app does not package:
 
 ## Container Contents
 
-- `plink2`: PLINK 2.0 alpha command-line application.
+- `plink2`: PLINK 2.0 beta command-line application.
 - `vcf_subset`: helper for sample and variant-ID subsetting of VCF/VCF.GZ
   inputs.
+- `ldsc`, `mtag`: the matching official C++ bundled utilities.
+- `pgen_compress`: upstream pgenlib I/O utility; includes BED/PGEN conversion
+  and separate-index output. Its source tag, rather than a version option,
+  identifies the program.
 - Runtime libraries: Debian OpenBLAS/LAPACK/LAPACKE, zlib, libstdc++ and their
   runtime dependencies.
 - `plink2-resources`: explicit, checksum-pinned reference installation and
@@ -65,7 +79,7 @@ SSE4.2 instructions while still using OpenBLAS/LAPACK for linear algebra.
 
 Install the published package through your usual TAFFISH workflow. From a source
 checkout, `taf check` and `taf build` generate
-`target/taf-plink2-v2.0.0-a.7.13-r1`; building a local candidate is not publishing.
+`target/taf-plink2-v2.0.0-b.1.0-r1`; building a local candidate is not publishing.
 
 Access upstream help and version:
 
@@ -110,6 +124,33 @@ Filter VCF records by variant ID with `vcf_subset 1.1.0`:
 taf-plink2 vcf_subset --in input.vcf.gz --out selected.vcf.gz --extract variants.txt
 taf-plink2 vcf_subset --in input.vcf.gz --out excluded.vcf.gz --exclude variants.txt
 ```
+
+Bundled summary-statistics utilities:
+
+```sh
+taf-plink2 ldsc --h2 trait.sumstats --ref-ld ref --w-ld weights --out h2
+taf-plink2 mtag --sumstats trait1.sumstats,trait2.sumstats --ldscore ref.ldscore --out joint
+```
+
+Choose scientifically compatible LD scores, alleles and sample-size columns.
+`mtag` without arguments prints usage and returns 1, as upstream implements it;
+this is not a container failure. No reference or summary statistics download is
+implicit. These tools write into their `--out` prefix, not the installation.
+
+See the official [bundled utilities documentation](https://www.cog-genomics.org/plink/2.0/bundle)
+for their supported interfaces and the LD Score regression (Bulik-Sullivan et al.,
+2015) and MTAG (Turley et al., 2018) citation requirements.
+
+The upstream pgenlib I/O utility also supports BED/PGEN conversion:
+
+```sh
+taf-plink2 pgen_compress cohort.bed converted.pgen SAMPLE_COUNT
+taf-plink2 pgen_compress -u converted.pgen restored.bed
+```
+
+Replace `SAMPLE_COUNT` with the number of samples in the BED file. This utility
+converts genotype storage only; keep the corresponding sample/variant metadata.
+Use PLINK2's normal conversion commands for a complete dataset.
 
 ## Command Mode
 
@@ -171,7 +212,10 @@ No reference is needed for basic operation, but references are **not all N/A**.
 Project cohorts/phenotypes are project-specific inputs. The official resources
 page also links reusable 1000 Genomes callsets, HGDP panels and GRCh37/38 FASTA.
 The independently fixed unit is a callset/chromosome with matching variant and
-sample tables, or a single FASTA, not the entire evolving resource family.
+sample tables, a single FASTA, or an explicitly selected LD-score file family
+with matching weights/annotation files, not the entire evolving resource family.
+Summary statistics and estimated covariance matrices are project inputs, not
+automatically chosen shared reference models.
 
 `plink2-resources` supports explicit repeated `--member`, `list`, `install`,
 `verify`, `--dry-run`, `--resource-root` and a schema-1 JSON `--catalog`.
@@ -228,7 +272,13 @@ fails closed without searching lower priorities. A partial family is acceptable
 only when every installed member passes its recorded inventory/checksums; it
 does not imply the requested scientific member exists. Symlinks for the root are
 physically resolved; symlink members/files are rejected. Spaces are supported;
-colon/comma in host paths are rejected. Host `sha256sum` or `shasum` is required.
+colon/comma in host paths are rejected. Host Python 3 is required when a managed
+root is selected; without it, disable auto-mount and use explicit manual binds.
+The frozen host validator and container helper share the same implementation:
+member ID, version/license/source, exact inventory, bytes, hashes and integrity
+markers must agree. Custom catalogs are user-pinned declarations, not signatures
+or a guarantee of scientific suitability. Re-signing READY after corrupting the
+receipt ID, byte count or required metadata cannot bypass these checks.
 Resources are mounted read-only at `/references` on all three backends; PLINK
 still requires explicit input/member paths. Set `TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT=0`
 to disable discovery, including during installation or manual binds. The wrapper
@@ -279,12 +329,12 @@ own provenance/hash; do not insert it into the immutable fixed member directory.
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-a.7.13`
-- Upstream commit: `b3a93fafb680aa8134f2df3b06b0c188bda0bae8`
+- Upstream tag: `v2.0.0-b.1.0`
+- Upstream commit: `b0c8f4b48a58911978a56da6ecddddd993bb6aaa`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.7.13.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-b.1.0.tar.gz`
 - Source SHA256:
-  `d125cd76cc284aa41c133add511b5030413e764b40d731fd38588dbd5104c6f6`
+  `07e08fe3a2c3287d5b85697fea95cb7885fbf0d877f792817237c3bf1343411f`
 - Debian 12 slim base index:
   `sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251`
 
@@ -298,12 +348,12 @@ checksums. Relevant Dockerfile instructions carry maintenance notes.
 ## Boundaries
 
 Official source entry points, recommended installation, developer documentation
-and tutorial companions were checked: no PLINK 2 alpha GUI/plugin extra is
+and tutorial companions were checked: no PLINK 2 beta GUI/plugin extra is
 packaged upstream. RStudio is an external tutorial environment; legacy gPLINK/
 Haploview are PLINK 1-era clients, not a PLINK 2 GUI contract. This app starts no
 browser service. A future compatible GUI needs its own explicit review.
 
-PLINK 2.0 is under active alpha development. This app pins a specific alpha
+PLINK 2.0 is under active beta development. This app pins a specific tagged
 release and checks the runtime version, but users should still review upstream
 release notes before interpreting results from production GWAS workflows.
 
@@ -334,57 +384,65 @@ and negative-position removal with PGEN validation after `--update-map`.
 These are runtime checks; Docker build-time tests remain lightweight.
 Biobank-scale regressions, full-genome reference downloads, CUDA, Python/R API
 workflows and production site deployment are not claimed by tiny smoke.
-Current a.7.13-r1 validation (2026-10-16) uses the current candidate, not historical
-a.7.11 receipts. Repository-root native Docker builds passed on amd64 and arm64.
-The 27 exact probes (combined existence, 14 individual existence, 12 tests) passed
-in all nine groups: Docker/Podman normal and read-only on both architectures,
-plus the amd64 read-only Apptainer SIF from the same OCI content (243 commands).
-Real wrapper checks passed on amd64 Docker/Podman/Apptainer and arm64 Podman
-(120 checks), with final frozen-help/runtime/file-SHA/failure-log rechecks.
-The additional arm64 Docker wrapper run was interrupted by Docker Desktop
-becoming unavailable; it is not recorded as a completed combination. Native
-arm64 build/exact smoke and the Docker backend axis are independently complete.
-ARM64 Apptainer is not separately validated; no architecture-specific resource
-or service dependency is claimed.
+The beta-specific checks add a non-concatenating sample merge with zero genotype
+differences, a synthetic LD-score regression with an independent h2=0.3 oracle,
+BED/PGEN/BED byte-for-byte round trips (embedded and separate indexes),
+and a two-trait MTAG path with finite outputs. They do not substitute for large
+cohort or estimator-validation studies. All these checks run at runtime, not
+as fragile performance/numerical gates in the Docker build.
 
-Closeout rechecked the current frozen help and its literal-quote examples on
-amd64 Docker/Podman/Apptainer and arm64 Podman: 19 targeted checks per route
-(76 total), plus 30 full wrapper checks and seven final identity/failure-log
-checks per route. The ordinary-quote negative case is recorded as an expected
-failure, not silently treated as supported argv behavior. The unchanged image
-content also passed 135 fresh amd64 exact probes and 27 arm64 Podman read-only
-probes during closeout; earlier native builds and the other exact groups remain
-bound to the same Dockerfile, manifest and image contents.
+Current b.1.0-r1 verification (20 October 2026):
 
-Resource discovery has 57 isolated contract checks on each of macOS and Linux.
-Only the two fixed site-root literals are mapped into private test directories;
-the remaining production function is verified byte-for-byte. Tests cover root
-priority, invalid higher-priority roots without fallback, symlinks, disable and
-space-containing physical paths. Selected physical roots are then paired with
-the actual wrapper's read-only mounts on all three backends. This validates the
-selection contract and backend binding separately; it is not a claim that the
-production `/usr/local/share` or `/opt/taffish` directories were deployed.
+| Native platform | Docker | Podman | Apptainer |
+| --- | --- | --- | --- |
+| Linux amd64 (xjp) | PASS | PASS | PASS, real read-only SIF from the same OCI |
+| Linux arm64 (local Linux VMs) | PASS | PASS | Not separately validated |
 
-On amd64, seven resource interruption windows across INT/TERM/HUP passed on
-all three backends (63 interruptions; 252 install/interrupt/recover/idempotent
-receipts). Valid old members remained unchanged. Another 41 checks cover
-private root-owned once-only installation, ordinary-user read-only reuse,
-actual HTTPS/empty partial downloads, missing/bad/duplicate inventories and
-recovery. The fixed GitHub software archive endpoint refused Range with curl 33;
-the prefix was preserved, no member was promoted, and the exact offline source
-recovered successfully. This is not a claim of successful HTTP Range service.
-No production reference callset was downloaded or analyzed in this update.
-Full production references, real-cohort correctness and actual production
-system deployment remain outside the evidence.
+Both native builds use the canonical Action's repository-root context and
+`docker/Dockerfile`. Nine fresh/offline direct groups each run combined exist,
+18 individual exist probes and 16 smoke tests (315 commands total); Docker and
+Podman have separate normal/read-only groups. Direct tests have no production
+bind or mounted-resource marker. Persistent writes use separate real wrappers.
+The five tested combinations pass 225 wrapper checks, including ordinary-user
+outputs, references, negative inputs and helper unit tests.
 
-Final image sizes: amd64 188,956,779 bytes; arm64 196,438,736 bytes.
-Runtime libraries dominate (/usr/lib approximately 137/131 MiB); PLINK2 itself
-uses approximately 4.5/3.9 MiB. Multi-stage builds exclude compiler/source archives;
-APT indexes/cache are empty or negligible, and headers only 48/44 KiB.
-Runtime and dependency license notices are retained rather than deleted for size.
-The existing Action is unchanged and byte-identical to fresh `taf new` output.
-Readiness, actual publication, Action/GHCR/Index success and scientific acceptance
-remain separate gates.
+Resource interruption/install/recovery/idempotency produces 372 receipts:
+all seven controlled transaction windows with INT/TERM/HUP on amd64's three
+backends and ARM64 Docker; ARM64 Podman rechecks three coupling-sensitive windows
+(lock allocation, pre-promotion and active child) after its VM keyring reset.
+The other four ARM64 Podman windows are not separately claimed for the final
+image. These are real wrapper/actual bind tests with controlled pause injection,
+not an exhaustive claim about every HTTP interruption timing. Old-member hashes
+remain unchanged. Another 41 checks cover explicit HTTPS installation, empty
+partial recovery, idempotency, shared read-only reuse and invalid roots.
+The fixed GitHub endpoint rejects Range with curl exit 33; the prefix is retained
+and exact offline bytes recover it. This is not claimed as successful online
+Range resumption.
+
+The final matrix also passes 40 frozen-source/text/space-path checks, 10 diagnostic
+negative checks, four installation-tree write-map probes and 138 isolated
+resource-discovery checks. All four image-side packaging files match the current
+source SHA256 on every tested wrapper combination.
+
+Final image sizes are 191,883,972 bytes (amd64) and 194,302,092 bytes (arm64);
+image IDs are `2848310c3393…` and `b1af31b6f558…`.
+The amd64 SIF SHA256 is
+`03b6d43b39e5f444c502377c22076178e133886a920f0887d2808c784b2881ed`.
+Profiles retain required libraries (137/132 MiB under `/usr/lib`), only 48 KiB
+under `/usr/include`, 12 KiB APT cache and 4 KiB APT lists. Compilers, source
+archives and build-time development trees are excluded by the final stage.
+
+Discovery tests map only the two site-root literals into private directories,
+and resolve the frozen validator path as the compiler does. They are paired
+with actual read-only wrapper mounts; no production system directory is changed.
+Resource tests use synthetic bytes or the fixed official software source, not
+real cohorts. Full production reference-family downloads, scientific correctness
+and production site deployment are not claimed.
+
+Multi-stage builds exclude compiler/source archives; runtime libraries and
+license notices remain. The existing Action is unchanged and byte-identical to
+fresh `taf new` output. Readiness, publication, Action/GHCR/Index success and
+scientific acceptance remain separate gates.
 
 ## License and Citation
 
@@ -392,7 +450,8 @@ TAFFISH app packaging is Apache-2.0.
 
 PLINK 2.0 upstream licensing is layered: the main application is GPL-3.0-or-later,
 the include libraries and `vcf_subset` are LGPL-3.0-or-later, and bundled SIMDe,
-libdeflate, and zstd components retain their own upstream licenses. License
+libdeflate, zstd and QD components retain their own upstream licenses. The new
+`ldsc` and `mtag` sources are GPL-3.0-or-later. License
 files are copied into the container under `/opt/plink2/share/licenses/plink2/`.
 
 Resource terms are separate: the official [resource page](https://www.cog-genomics.org/plink/2.0/resources)

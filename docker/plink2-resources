@@ -13,6 +13,14 @@ import signal
 import subprocess
 import sys
 
+# The source checkout and installed image use the same validator bytes.
+sys.dont_write_bytecode = True
+_validation_dir = Path(__file__).resolve().parent
+if not (_validation_dir / 'resource_validation.py').is_file():
+    _validation_dir = _validation_dir.parent / 'src'
+sys.path.insert(0, str(_validation_dir))
+import resource_validation as validation
+
 CATALOG = Path('/opt/plink2/share/resources.json')
 MARKERS = {'receipt.json', 'SHA256SUMS', 'READY'}
 
@@ -72,51 +80,10 @@ def canonical(data):
     return json.dumps(data, sort_keys=True, separators=(',', ':')).encode()
 
 def load_catalog(path):
-    data = json.loads(path.read_text())
-    if data.get('schema') != 1 or not isinstance(data.get('members'), list):
-        raise ValueError('expected schema=1 and members array')
-    seen = set()
-    for m in data['members']:
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', m['id']) or m['id'] in seen:
-            raise ValueError('invalid or duplicate member ID')
-        seen.add(m['id'])
-        if not m.get('version') or not m.get('license') or not m.get('source') or not m['files']:
-            raise ValueError('version/license/source/files required')
-        names = set()
-        for f in m['files']:
-            name = f['name']
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name) or name in names or name in MARKERS:
-                raise ValueError('invalid or duplicate filename')
-            names.add(name)
-            if not f['url'].startswith('https://') or not re.fullmatch('[0-9a-f]{64}', f['sha256']):
-                raise ValueError('HTTPS URL and exact SHA256 required')
-            if type(f['bytes']) is not int or f['bytes'] <= 0:
-                raise ValueError('positive fixed byte count required')
-    return data
+    return validation.load_catalog(path)
 
 def verify(member, target, markers=True):
-    if target.is_symlink() or not target.is_dir():
-        raise ValueError('not a regular installed member directory')
-    receipt = target / 'receipt.json'
-    if receipt.is_symlink() or not receipt.is_file():
-        raise ValueError('missing regular receipt')
-    if json.loads(receipt.read_text()) != member:
-        raise ValueError('receipt does not match selected fixed member')
-    expected = (MARKERS if markers else {'receipt.json'}) | {f['name'] for f in member['files']}
-    if {x.name for x in target.iterdir()} != expected:
-        raise ValueError('unexpected or missing files')
-    for f in member['files']:
-        path = target / f['name']
-        if path.is_symlink() or not path.is_file() or path.stat().st_size != f['bytes'] or digest(path) != f['sha256']:
-            raise ValueError('checksum/size mismatch: ' + f['name'])
-    if markers:
-        for name in ('SHA256SUMS', 'READY'):
-            if (target / name).is_symlink() or not (target / name).is_file():
-                raise ValueError('missing regular integrity marker')
-        sums = ''.join(digest(target / name) + '  ' + name + '\n'
-                       for name in sorted({'receipt.json'} | {f['name'] for f in member['files']}))
-        if (target / 'SHA256SUMS').read_text() != sums or (target / 'READY').read_text() != digest(target / 'SHA256SUMS') + '\n':
-            raise ValueError('integrity marker mismatch')
+    return validation.verify(member, target, markers)
 
 def main():
     p = argparse.ArgumentParser(description='Install explicitly selected checksum-pinned PLINK reference members; never downloads all by default.')

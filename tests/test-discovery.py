@@ -40,12 +40,14 @@ def main():
     prefix, tag = source.split('<taf-app:container:',1)
     assert prefix.startswith('<shell>\n') and 'taf_plink2_mount' in tag
     function=prefix.removeprefix('<shell>\n')
+    function=function.replace('::*LOADDIR*::',str(a.main.resolve().parent))
     assert all(function.count(s)==1 for s in SITES)
     names=['none','opt-only','usr-over-opt','personal-over-sites','override-over-all',
            'bad-personal-no-fallback','bad-usr-no-fallback','dangling-usr-no-fallback',
            'empty-override','missing-override','disable-invalid','bad-switch',
            'personal-symlink','usr-symlink','space-usr','corrupt-usr-no-fallback',
-           'empty-family-no-fallback','colon-path','comma-path']
+           'empty-family-no-fallback','colon-path','comma-path',
+           'resigned-wrong-id','resigned-wrong-size','resigned-missing-license','no-host-python']
     rows=[]
     for backend in ('docker','podman','apptainer'):
         for name in names:
@@ -88,8 +90,20 @@ def main():
             if name in ('colon-path','comma-path'):
                 expected=prepared(case/('bad:path' if name=='colon-path' else 'bad,path'),'bad-path')
                 env['TAFFISH_PLINK2_RESOURCE_PATH']=str(expected); invalid=True
+            if name.startswith('resigned-'):
+                member=usr/'synthetic-v1'
+                receipt=json.loads((member/'receipt.json').read_text())
+                if name=='resigned-wrong-id': receipt['id']='different-v1'
+                if name=='resigned-wrong-size': receipt['files'][0]['bytes']+=1
+                if name=='resigned-missing-license': del receipt['license']
+                (member/'receipt.json').write_text(json.dumps(receipt)+'\n')
+                (member/'SHA256SUMS').write_text(''.join(digest(member/n)+'  '+n+'\n' for n in ('receipt.json','tiny.txt')))
+                (member/'READY').write_text(digest(member/'SHA256SUMS')+'\n')
+                invalid=True
+            if name=='no-host-python':
+                env['PATH']=str(case/'missing-bin'); invalid=True
             script=mapped+'\ntaf_plink2_mount '+shlex.quote(backend)+'\n'
-            run=subprocess.run(['sh','-c',script],env=env,capture_output=True,text=True,timeout=20)
+            run=subprocess.run(['/bin/sh','-c',script],env=env,capture_output=True,text=True,timeout=20)
             want='--taf-plink2-invalid-resource' if invalid else (
                 '--env=TAFFISH_ENV=TAFFISH' if disabled or expected is None else
                 ('--bind=' if backend=='apptainer' else '--volume=')+str(expected.resolve())+':/references:ro')

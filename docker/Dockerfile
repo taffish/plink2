@@ -1,9 +1,9 @@
 FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG PLINK2_VERSION=2.0.0-a.7.13
-ARG PLINK2_TAG=v2.0.0-a.7.13
-ARG PLINK2_SHA256=d125cd76cc284aa41c133add511b5030413e764b40d731fd38588dbd5104c6f6
+ARG PLINK2_VERSION=2.0.0-b.1.0
+ARG PLINK2_TAG=v2.0.0-b.1.0
+ARG PLINK2_SHA256=07e08fe3a2c3287d5b85697fea95cb7885fbf0d877f792817237c3bf1343411f
 
 # 基础镜像 digest 不锁定活动 APT 仓库；包修订/可得性可能变化。先区分网络、索引与下架，
 # 核对 Debian 官方来源和架构；采用新依赖须重建双架构并复验离线 smoke/真实 wrapper。
@@ -29,9 +29,13 @@ RUN set -eux; \
     src="plink-ng-${PLINK2_VERSION}/2.0"; \
     make -C "$src/build_dynamic" -j"$(nproc)" SFX=; \
     make -C "$src/utils/vcf_subset" -j"$(nproc)" SFX=; \
+    make -C "$src/utils/ldsc" -j"$(nproc)" SFX=; \
+    make -C "$src/utils/mtag" -j"$(nproc)" SFX=; \
     mkdir -p /opt/plink2/bin /opt/plink2/share/doc/plink2 /opt/plink2/share/licenses/plink2; \
     cp "$src/build_dynamic/plink2" /opt/plink2/bin/plink2; \
     cp "$src/utils/vcf_subset/vcf_subset" /opt/plink2/bin/vcf_subset; \
+    cp "$src/utils/ldsc/ldsc" /opt/plink2/bin/ldsc; \
+    cp "$src/utils/mtag/mtag" /opt/plink2/bin/mtag; \
     cp "$src/README.md" /opt/plink2/share/doc/plink2/README.md; \
     cp "$src/COPYING" /opt/plink2/share/licenses/plink2/COPYING; \
     cp "$src/COPYING.LESSER" /opt/plink2/share/licenses/plink2/COPYING.LESSER; \
@@ -39,17 +43,24 @@ RUN set -eux; \
     cp "$src/libdeflate/COPYING" /opt/plink2/share/licenses/plink2/libdeflate-COPYING; \
     cp "$src/zstd/COPYING" /opt/plink2/share/licenses/plink2/zstd-COPYING; \
     cp "$src/zstd/LICENSE" /opt/plink2/share/licenses/plink2/zstd-LICENSE; \
+    cp "$src/include/LICENSE.QD" /opt/plink2/share/licenses/plink2/LICENSE.QD; \
     { \
       echo "PLINK 2.0 ${PLINK2_VERSION}"; \
       echo "Tag: ${PLINK2_TAG}"; \
       echo "Source: https://github.com/chrchang/plink-ng/archive/refs/tags/${PLINK2_TAG}.tar.gz"; \
       echo "SHA256: ${PLINK2_SHA256}"; \
-      echo "Build: 2.0/build_dynamic plink2 plus 2.0/utils/vcf_subset vcf_subset"; \
+      echo "Build: 2.0/build_dynamic plink2 plus 2.0/utils/{vcf_subset,ldsc,mtag}"; \
       echo "BLAS/LAPACK: Debian OpenBLAS/LAPACK dynamic libraries"; \
       echo "CPU baseline: upstream build_dynamic defaults NO_AVX2=1 NO_SSE42=1"; \
     } > /opt/plink2/share/doc/plink2/source.txt; \
-    chmod 0755 /opt/plink2/bin/plink2 /opt/plink2/bin/vcf_subset; \
-    strip /opt/plink2/bin/plink2 /opt/plink2/bin/vcf_subset
+    chmod 0755 /opt/plink2/bin/plink2 /opt/plink2/bin/vcf_subset /opt/plink2/bin/ldsc /opt/plink2/bin/mtag; \
+    strip /opt/plink2/bin/plink2 /opt/plink2/bin/vcf_subset /opt/plink2/bin/ldsc /opt/plink2/bin/mtag
+
+# Keep the upstream pgenlib I/O utility built by build_dynamic as well.
+RUN cp "/tmp/plink2-build/plink-ng-${PLINK2_VERSION}/2.0/build_dynamic/pgen_compress" /opt/plink2/bin/pgen_compress \
+ && chmod 0755 /opt/plink2/bin/pgen_compress \
+ && strip /opt/plink2/bin/pgen_compress \
+ && printf '%s\n' 'Bundled I/O utility: 2.0/build_dynamic/pgen_compress (same source tag)' >> /opt/plink2/share/doc/plink2/source.txt
 
 FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
@@ -76,6 +87,7 @@ COPY --from=builder /opt/plink2 /opt/plink2
 # helper 的 resources.json 固定 URL/大小/SHA，但第三方资源仍可能下架；保留许可边界。
 # 下载失败不改 checksum；可信旧副本可用 --source-dir，新资源需新 catalog 身份和完整重验。
 COPY docker/plink2-resources /opt/plink2/bin/plink2-resources
+COPY src/resource_validation.py /opt/plink2/bin/resource_validation.py
 COPY docker/resources.json /opt/plink2/share/resources.json
 COPY docker/plink2-smoke /opt/plink2/bin/plink2-smoke
 
@@ -84,7 +96,13 @@ RUN chmod 0755 /opt/plink2/bin/plink2-resources /opt/plink2/bin/plink2-smoke
 RUN set -eux; \
     ln -s /opt/plink2/bin/plink2 /usr/local/bin/plink2; \
     ln -s /opt/plink2/bin/vcf_subset /usr/local/bin/vcf_subset; \
-    plink2 --version 2>&1 | grep -Fx "PLINK v2.0.0-a.7.13 64-bit (15 Oct 2026)" >/dev/null; \
+    ln -s /opt/plink2/bin/ldsc /usr/local/bin/ldsc; \
+    ln -s /opt/plink2/bin/mtag /usr/local/bin/mtag; \
+    ln -s /opt/plink2/bin/pgen_compress /usr/local/bin/pgen_compress; \
+    test -x /opt/plink2/bin/pgen_compress; \
+    plink2 --version 2>&1 | grep -Fx "PLINK v2.0.0-b.1.0 64-bit (19 Oct 2026)" >/dev/null; \
+    ldsc --version 2>&1 | grep -Fx "ldsc (plink-ng) v0.1" >/dev/null; \
+    mtag --version 2>&1 | grep -Fx "mtag (plink-ng) v0.1" >/dev/null; \
     plink2 --help 2>&1 | grep -F -- "--make-pgen" >/dev/null; \
     vcf_subset --version 2>&1 | grep -F "vcf_subset v1.1.0" >/dev/null; \
     vcf_subset --help 2>&1 | grep -F "Usage: vcf_subset" >/dev/null; \

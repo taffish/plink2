@@ -1,0 +1,40 @@
+<shell>
+# 仅暴露显式安装并通过完整性检查的资源，不解析上游参数、不选择科学成员。
+taf_plink2_mount() {
+    taf_p_backend="$1"
+    case "${TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT:-1}" in
+        0|false|FALSE|no|NO|off|OFF) printf -- '--env=TAFFISH_ENV=TAFFISH'; return ;;
+        1|true|TRUE|yes|YES|on|ON) ;;
+        *) printf >&2 'taf-plink2: RESOURCE_AUTO_MOUNT must be 0 or 1\n'; printf -- '--taf-plink2-invalid-resource'; return ;;
+    esac
+    taf_p_root="${TAFFISH_PLINK2_RESOURCE_PATH:-}"
+    if test "${TAFFISH_PLINK2_RESOURCE_PATH+x}" != x; then
+        for taf_p_path in "${HOME}/.local/share/taffish/resources/plink2" /usr/local/share/taffish/resources/plink2 /opt/taffish/resources/plink2; do
+            if test -e "$taf_p_path" || test -L "$taf_p_path"; then taf_p_root="$taf_p_path"; break; fi
+        done
+        if test -z "$taf_p_root"; then printf -- '--env=TAFFISH_ENV=TAFFISH'; return; fi
+    fi
+    taf_p_ok=1
+    if ! test -d "$taf_p_root"; then taf_p_ok=0; else
+        taf_p_root="$(CDPATH= cd "$taf_p_root" && pwd -P)" || taf_p_ok=0
+        case "$taf_p_root" in *:*|*,*) taf_p_ok=0 ;; esac
+        # Use the same isolated validator as the container resource helper.
+        if ! command -v python3 >/dev/null 2>&1; then
+            printf >&2 'taf-plink2: automatic validation requires host Python 3; disable discovery and verify in the container before a manual bind.\n'
+            taf_p_ok=0
+        elif ! python3 -I -B "::*LOADDIR*::/resource_validation.py" "$taf_p_root"; then
+            taf_p_ok=0
+        fi
+    fi
+    if test "$taf_p_ok" != 1; then
+        printf >&2 'taf-plink2: invalid/unprepared resource root: %s; verify or choose RESOURCE_PATH; RESOURCE_AUTO_MOUNT=0 disables discovery for setup/manual binds.\n' "$taf_p_root"
+        printf -- '--taf-plink2-invalid-resource'; return
+    fi
+    if test "$taf_p_backend" = apptainer; then
+        printf -- '--bind=%s:/references:ro' "$taf_p_root"
+    else
+        printf -- '--volume=%s:/references:ro' "$taf_p_root"
+    fi
+}
+<taf-app:container:ghcr.io/taffish/plink2:2.0.0-b.1.0-r1$@[docker/podman: "$(taf_plink2_mount docker)"][apptainer: "$(taf_plink2_mount apptainer)"]>
+plink2 ::*ARGV*::

@@ -10,11 +10,23 @@ receipt 和无效 URL/大小/SHA/文件名。Apptainer 默认私有 umask 下也
 
 运行 `python3 tests/test-discovery.py --out <新的私有测试目录>`。
 测试直接提取当前 `src/main.taf` 的资源发现函数，仅将两个site固定路径映射到该私有目录，
-逐字逆变换断言其余函数未改，保存source/function SHA与57项回执。覆盖个人/site/override
+解析冻结validator路径后逐字逆变换断言其余函数未改，保存source/function SHA与69项回执。覆盖个人/site/override
 优先级、失效symlink、损坏或空的高优先级root不回退、关闭开关和真实含空格物理目录。
 这是隔离发现契约，不是生产system部署；须配合当前冻结wrapper的真实三backend只读bind。
 空格参数测试还必须区分普通shell引号的已知失败与literal-quote成功，覆盖输入、输出及helper。
 host `RESOURCE_PATH` 使用普通环境变量引号，不能误加literal-quote；见README与help。
+新增READY重新签名后的错误ID、大小、缺许可证负向；helper与自动挂载必须同时拒绝。
+缺宿主Python3明确失败，不能静默跳过校验；关闭开关及手动bind另行验证。
+
+## b.1.0 后继验收
+
+`beta-merge` 用16个合成样本拆分后纵向合并，检查16样本和24位点零基因型差异。
+`ldsc` 使用300个合成记录的精确线性模型，独立检查h2=0.3，采用浮点容差。
+`mtag` 用200个合成记录/两个trait/显式协方差，保留maxFDR计算，检查有限输出和正SE。
+`compress` 覆盖 BED→PGEN→BED 逐字节往返，以及独立 PGI 索引模式。
+这些验证封装可运行和基本数据通路，不冒充生产统计适用性；不改上游算法。
+当前版本必须重跑所有后端，不能引用下方历史版本PASS代替。共有35个exact探针：
+combined exist、18个单exist、16个独立test；root context原生双架构构建另取证。
 
 ## a.7.13 后继验收
 

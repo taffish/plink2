@@ -26,21 +26,29 @@ run() { stage=$1; shift; "$@" > "$stage.log" 2>&1; }
 case "$mode" in
 identity)
     stage=identity
-    grep -Fx 'PLINK 2.0 2.0.0-a.7.13' /opt/plink2/share/doc/plink2/source.txt
-    grep -Fx 'SHA256: d125cd76cc284aa41c133add511b5030413e764b40d731fd38588dbd5104c6f6' /opt/plink2/share/doc/plink2/source.txt
-    for f in COPYING COPYING.LESSER simde-COPYING libdeflate-COPYING zstd-COPYING zstd-LICENSE; do
+    grep -Fx 'PLINK 2.0 2.0.0-b.1.0' /opt/plink2/share/doc/plink2/source.txt
+    grep -Fx 'SHA256: 07e08fe3a2c3287d5b85697fea95cb7885fbf0d877f792817237c3bf1343411f' /opt/plink2/share/doc/plink2/source.txt
+    for f in COPYING COPYING.LESSER simde-COPYING libdeflate-COPYING zstd-COPYING zstd-LICENSE LICENSE.QD; do
         test -s "/opt/plink2/share/licenses/plink2/$f"
     done
     ;;
 interface)
     run version plink2 --version
-    grep -Fx 'PLINK v2.0.0-a.7.13 64-bit (15 Oct 2026)' version.log
+    grep -Fx 'PLINK v2.0.0-b.1.0 64-bit (19 Oct 2026)' version.log
     run help plink2 --help
     for opt in --make-pgen --glm --pca --hardy --export; do grep -F -- "$opt" help.log >/dev/null; done
     run subset-version vcf_subset --version
     grep -Fx 'vcf_subset v1.1.0 64-bit (16 May 2026)' subset-version.log
     run subset-help vcf_subset --help
     for opt in --extract --exclude --keep; do grep -F -- "$opt" subset-help.log >/dev/null; done
+    run ldsc-version ldsc --version
+    grep -Fx 'ldsc (plink-ng) v0.1' ldsc-version.log
+    run mtag-version mtag --version
+    grep -Fx 'mtag (plink-ng) v0.1' mtag-version.log
+    stage=mtag-usage
+    rc=0; mtag > mtag-usage.log 2>&1 || rc=$?
+    test "$rc" = 1
+    grep -F 'Usage: mtag' mtag-usage.log
     ;;
 linkage)
     run linkage ldd /opt/plink2/bin/plink2
@@ -49,6 +57,10 @@ linkage)
     run subset-linkage ldd /opt/plink2/bin/vcf_subset
     grep -F libz.so subset-linkage.log >/dev/null
     if grep -F 'not found' subset-linkage.log; then exit 1; fi
+    for tool in ldsc mtag pgen_compress; do
+        run "$tool-linkage" ldd "/opt/plink2/bin/$tool"
+        if grep -F 'not found' "$tool-linkage.log"; then exit 1; fi
+    done
     ;;
 core)
     run dummy plink2 --dummy 64 24 acgt --seed 42 --threads 1 --memory 640 --make-pgen --out tiny
@@ -150,6 +162,80 @@ PY
     run mendel plink2 --pfile family --mendel --out errors --memory 640 --threads 1
     test -s errors.mendel
     grep -F '20' errors.fmendel
+    ;;
+compress)
+    run dummy plink2 --dummy 8 12 acgt --seed 42 --threads 1 --memory 640 --make-bed --out tiny
+    run compress pgen_compress tiny.bed converted.pgen 8
+    test -s converted.pgen
+    run decompress pgen_compress -u converted.pgen restored.bed
+    cmp tiny.bed restored.bed
+    run indexed pgen_compress -i tiny.bed indexed.pgen 8
+    test -s indexed.pgen.pgi
+    run indexed-decompress pgen_compress -u indexed.pgen indexed-restored.bed
+    cmp tiny.bed indexed-restored.bed
+    ;;
+beta-merge)
+    run dummy plink2 --dummy 16 24 acgt --seed 42 --threads 1 --memory 640 --make-pgen --out tiny
+    # A vertical sample merge exercises the beta implementation, not concatenation.
+    awk 'NR>1 && NR<=9 {print $1}' tiny.psam > first.ids
+    awk 'NR>9 {print $1}' tiny.psam > second.ids
+    run first plink2 --pfile tiny --keep first.ids --make-pgen --out first --memory 640
+    run second plink2 --pfile tiny --keep second.ids --make-pgen --out second --memory 640
+    run merge plink2 --pfile first --pmerge second --make-pgen --out merged --memory 640
+    test "$(wc -l < merged.psam)" -eq 17
+    run validate plink2 --pfile merged --validate --memory 640
+    run compare plink2 --pfile tiny --pgen-diff merged --out compare --memory 640
+    grep -F '0 differences' compare.log
+    ;;
+ldsc)
+    stage=ldsc-fixture
+    # Exact synthetic linear chi-square model: h2=0.3, intercept=1.
+    python3 - <<'PY'
+import math
+from pathlib import Path
+n, count = 1000, 300
+stats = ['SNP A1 A2 Z N']
+scores = ['CHR SNP BP L2']
+for i in range(count):
+    ld = 1 + i % 29
+    stats.append(f'rs{i} A G {math.sqrt(1+n*0.3*ld/count):.17g} {n}')
+    scores.append(f'1 rs{i} {i+1} {ld}')
+Path('trait.sumstats').write_text('\n'.join(stats)+'\n')
+Path('ref.ldscore').write_text('\n'.join(scores)+'\n')
+PY
+    run ldsc ldsc --h2 trait.sumstats --ref-ld ref.ldscore --w-ld ref.ldscore --M 300 --no-intercept --n-blocks 10 --out estimate
+    stage=ldsc-result
+    python3 - <<'PY'
+import csv, math
+with open('estimate.h2') as stream:
+    row = next(csv.DictReader(stream, delimiter='\t'))
+assert math.isclose(float(row['h2']), 0.3, rel_tol=1e-5), row
+PY
+    ;;
+mtag)
+    stage=mtag-fixture
+    python3 - <<'PY'
+import math
+from pathlib import Path
+rows = ['ID Z1 N1 Z2 N2']
+for i in range(200):
+    z1 = 2.5*math.sin(i*.71)
+    z2 = 1.2*math.sin(i*.71)+2.1*math.cos(i*.37)
+    rows.append(f'rs{i} {z1:.12g} 1000 {z2:.12g} 1200')
+Path('zn.txt').write_text('\n'.join(rows)+'\n')
+Path('sigma.txt').write_text('1 0\n0 1\n')
+PY
+    run mtag mtag --zn zn.txt --sigma sigma.txt --out estimate --intervals 3 --threads 1
+    stage=mtag-result
+    python3 - <<'PY'
+import math
+from pathlib import Path
+rows = [line.split() for line in Path('estimate.mtag').read_text().splitlines()]
+assert len(rows) == 201 and rows[0] == ['ID','BETA1','SE1','Z1','BETA2','SE2','Z2'], rows[:2]
+for row in rows[1:]:
+    assert all(math.isfinite(float(v)) for v in row[1:]), row
+    assert float(row[2]) > 0 and float(row[5]) > 0, row
+PY
     ;;
 resources)
     run resource-help plink2-resources --help
