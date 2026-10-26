@@ -1,5 +1,5 @@
 <shell>
-# 仅暴露显式安装并通过完整性检查的资源，不解析上游参数、不选择科学成员。
+# Expose only explicitly installed, validated roots; never select scientific input.
 taf_plink2_mount() {
     taf_p_backend="$1"
     case "${TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT:-1}" in
@@ -36,5 +36,5 @@ taf_plink2_mount() {
         printf -- '--volume=%s:/references:ro' "$taf_p_root"
     fi
 }
-<taf-app:container:ghcr.io/taffish/plink2:2.0.0-b.1.0-r1$@[docker/podman: "$(taf_plink2_mount docker)"][apptainer: "$(taf_plink2_mount apptainer)"]>
+<taf-app:container:ghcr.io/taffish/plink2:2.0.0-b.1.2-r1$@[docker/podman: "$(taf_plink2_mount docker)"][apptainer: "$(taf_plink2_mount apptainer)"]>
 plink2 ::*ARGV*::

@@ -1,34 +1,42 @@
 # plink2
 
-`plink2` packages the tagged PLINK 2.0 beta 1.0 for TAFFISH.
+`plink2` packages the tagged PLINK 2.0 beta 1.2 for TAFFISH.
 
 Package identity:
 
 - name: `plink2`
 - command: `taf-plink2`
 - kind: `tool`
-- version: `2.0.0-b.1.0-r1`
-- image: `ghcr.io/taffish/plink2:2.0.0-b.1.0-r1`
+- version: `2.0.0-b.1.2-r1`
+- image: `ghcr.io/taffish/plink2:2.0.0-b.1.2-r1`
 - license: Apache-2.0 for TAFFISH packaging
-- upstream tag: `v2.0.0-b.1.0`
-- runtime: `PLINK v2.0.0-b.1.0`, `vcf_subset v1.1.0`, `ldsc (plink-ng) v0.1`,
+- upstream tag: `v2.0.0-b.1.2`
+- runtime: `PLINK v2.0.0-b.1.2`, `vcf_subset v1.1.0`, `ldsc (plink-ng) v0.1`,
   `mtag (plink-ng) v0.1`, and same-tag `pgen_compress`
 - upstream: <https://www.cog-genomics.org/plink/2.0/>
 
 ## What This App Packages
 
 This app builds PLINK 2.0 from the official `chrchang/plink-ng` source tag
-`v2.0.0-b.1.0`, posted on 19 October 2026. The default command is `plink2`; the
-same source tree also supplies `vcf_subset`, `ldsc`, `mtag` and `pgen_compress`.
+`v2.0.0-b.1.2`, released on 25 October 2026 (runtime date: 24 October).
+The default command is `plink2`; the same source tree supplies `vcf_subset`,
+`ldsc`, `mtag` and `pgen_compress`.
 
-This moves from alpha 7.13 to the versioned beta 1.0 release, not a rolling beta
-development snapshot. GitHub marks this tag non-prerelease; the official site
-announces the end of beta 1 feature development. This is still upstream's beta
-software, not a claim of a final PLINK 2 release or universal scientific validity.
+This updates tagged beta 1.0 to beta 1.2. GitHub marks the Release
+`draft=false, prerelease=false`, but upstream still calls PLINK 2 beta:
+this is an official versioned beta release, not a final stable-version claim.
+On 25 October 2026 the maintainer approved routine tracking of official,
+versioned beta Releases meeting those two flags, without asking each time.
+Rolling development snapshots, drafts and explicitly marked prereleases remain
+outside that policy. Each successor still requires identity, compatibility and
+full packaging checks; the policy does not waive failures or authorize publishing.
 No upstream algorithm/source patch is applied.
-The maintainer explicitly approved this alpha-to-tagged-beta transition on
-20 October 2026. The tag watcher is only a discovery hint; future beta/RC or
-prerelease candidates still require review, not an automatic stable designation.
+
+Beta 1.1 fixes LD-score window handling and show-tags output-buffer corruption;
+beta 1.2 fixes reduced-column missingness, multiallelic linear-batch covariate
+output and several very-long-identifier/allele paths, and restores multiallelic
+multinomial GLM support. See the official
+[beta 1.2 notes](https://github.com/chrchang/plink-ng/releases/tag/v2.0.0-b.1.2).
 
 Compatibility changes include low-MAF checks for PCA/GRM (`--grm-maf` makes
 filtering explicit), stronger allele-uniqueness validation and new output/merge
@@ -79,7 +87,7 @@ SSE4.2 instructions while still using OpenBLAS/LAPACK for linear algebra.
 
 Install the published package through your usual TAFFISH workflow. From a source
 checkout, `taf check` and `taf build` generate
-`target/taf-plink2-v2.0.0-b.1.0-r1`; building a local candidate is not publishing.
+`target/taf-plink2-v2.0.0-b.1.2-r1`; building a local candidate is not publishing.
 
 Access upstream help and version:
 
@@ -253,6 +261,13 @@ Download concurrency is one.
 Required free space is selected member bytes plus 16 MiB; decompression requires
 additional project space. Completed files are reused after hashing; partial files
 remain in `.partial-*`. A server refusing Range causes failure, not unsafe append.
+Installation requires filesystem support for atomic no-replace directory rename.
+Docker Desktop's gRPC FUSE host shares may reject it with `Invalid argument`;
+the helper fails closed and retains the completed partial, never using an unsafe
+overwriting rename. On macOS, retry the same install against the same host root
+with `TAFFISH_CONTAINER_BACKEND=podman`; then Docker can verify and read that
+prepared root. Native Linux filesystems are another supported preparation path.
+Read-only reuse and normal analysis do not require this rename operation.
 `--source-dir DIR` resumes missing, empty or matching-prefix offline files without
 relaxing the pinned SHA/size; mismatched prefixes are retained and rejected.
 Corruption fails closed. No destructive `--force`: preserve a damaged root for
@@ -274,6 +289,10 @@ does not imply the requested scientific member exists. Symlinks for the root are
 physically resolved; symlink members/files are rejected. Spaces are supported;
 colon/comma in host paths are rejected. Host Python 3 is required when a managed
 root is selected; without it, disable auto-mount and use explicit manual binds.
+Installation, selected-member verification and automatic discovery first validate
+all already installed members, including unrelated members outside the selected
+catalog. A broken sibling blocks adding a new member before mutation; recovery
+requires restoring valid bytes or selecting a new root, never deleting old members.
 The frozen host validator and container helper share the same implementation:
 member ID, version/license/source, exact inventory, bytes, hashes and integrity
 markers must agree. Custom catalogs are user-pinned declarations, not signatures
@@ -329,12 +348,12 @@ own provenance/hash; do not insert it into the immutable fixed member directory.
 
 - Upstream repository: <https://github.com/chrchang/plink-ng>
 - Upstream documentation: <https://www.cog-genomics.org/plink/2.0/>
-- Upstream tag: `v2.0.0-b.1.0`
-- Upstream commit: `b0c8f4b48a58911978a56da6ecddddd993bb6aaa`
+- Upstream tag: `v2.0.0-b.1.2`
+- Upstream commit: `cc2c95e61c509d49aaf884d2ec0956a921770745`
 - Source archive:
-  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-b.1.0.tar.gz`
+  `https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-b.1.2.tar.gz`
 - Source SHA256:
-  `07e08fe3a2c3287d5b85697fea95cb7885fbf0d877f792817237c3bf1343411f`
+  `cae10bba9c470c1adb336d8871f1ca071b9e57e2bf6c86677c208184c7dc4a42`
 - Debian 12 slim base index:
   `sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251`
 
@@ -391,58 +410,51 @@ and a two-trait MTAG path with finite outputs. They do not substitute for large
 cohort or estimator-validation studies. All these checks run at runtime, not
 as fragile performance/numerical gates in the Docker build.
 
-Current b.1.0-r1 verification (20 October 2026):
+Current b.1.2-r1 runtime validation completed on 25 October 2026. No beta 1.0
+PASS is reused as beta 1.2 evidence. The new `beta-missing` regression compares complete
+and reduced-column sample missingness against explicit synthetic counts and
+checks a 6,005-character variant ID survives the report.
 
-| Native platform | Docker | Podman | Apptainer |
-| --- | --- | --- | --- |
-| Linux amd64 (xjp) | PASS | PASS | PASS, real read-only SIF from the same OCI |
-| Linux arm64 (local Linux VMs) | PASS | PASS | Not separately validated |
+| Native environment | Exact offline smoke | Real wrapper / resources |
+| --- | --- | --- |
+| xjp amd64 Docker | 36 normal + 36 non-root read-only | 52 checks; 84 signal/recovery/idempotency receipts |
+| xjp amd64 Podman | 36 normal + 36 non-root read-only | 52 checks; 84 signal/recovery/idempotency receipts |
+| xjp amd64 Apptainer | 36 on the same OCI converted to a read-only SIF | 52 checks; 84 signal/recovery/idempotency receipts |
+| macOS ARM64 Docker VM | 36 normal + 36 non-root read-only | 51 Docker checks plus 2 explicitly recorded Podman preparation calls; gRPC FUSE install refusal and Docker read-only reuse verified |
+| macOS ARM64 Podman VM | 36 normal + 36 non-root read-only | 52 checks; 36 signal receipts covering lock, pre-promotion and child-allocation windows |
 
-Both native builds use the canonical Action's repository-root context and
-`docker/Dockerfile`. Nine fresh/offline direct groups each run combined exist,
-18 individual exist probes and 16 smoke tests (315 commands total); Docker and
-Podman have separate normal/read-only groups. Direct tests have no production
-bind or mounted-resource marker. Persistent writes use separate real wrappers.
-The five tested combinations pass 225 wrapper checks, including ordinary-user
-outputs, references, negative inputs and helper unit tests.
+The Docker/macOS row does **not** claim direct resource installation or signal
+recovery on gRPC FUSE; use the preparation fallback above. The other four signal
+windows were not separately rerun on ARM64 Podman. Full seven-window coverage
+is from native xjp, not extrapolated to those untested combinations.
+All five axes also passed ordinary-user directory/permission negative controls,
+final image-source identity, expected failure diagnostics, and the unchanged
+official GLM linear-batch regression. Resource-unit tests run inside the actual
+wrapper, including Docker's supported container scratch filesystem.
 
-Resource interruption/install/recovery/idempotency produces 372 receipts:
-all seven controlled transaction windows with INT/TERM/HUP on amd64's three
-backends and ARM64 Docker; ARM64 Podman rechecks three coupling-sensitive windows
-(lock allocation, pre-promotion and active child) after its VM keyring reset.
-The other four ARM64 Podman windows are not separately claimed for the final
-image. These are real wrapper/actual bind tests with controlled pause injection,
-not an exhaustive claim about every HTTP interruption timing. Old-member hashes
-remain unchanged. Another 41 checks cover explicit HTTPS installation, empty
-partial recovery, idempotency, shared read-only reuse and invalid roots.
-The fixed GitHub endpoint rejects Range with curl exit 33; the prefix is retained
-and exact offline bytes recover it. This is not claimed as successful online
-Range resumption.
+An additional 41 xjp receipts cover fixed official **software source** HTTPS
+downloads, empty/prefix partial recovery, idempotency, administrator-once
+installation and three-backend read-only reuse. GitHub refused Range with curl
+exit 33; the existing prefix survived and recovery used the exact verified
+offline source, not a claim of successful online continuation. The isolated
+Podman online fixture used slirp4netns after pasta rejected its private namespace;
+all ordinary smoke remained offline. No host networking/security setting changed.
 
-The final matrix also passes 40 frozen-source/text/space-path checks, 10 diagnostic
-negative checks, four installation-tree write-map probes and 138 isolated
-resource-discovery checks. All four image-side packaging files match the current
-source SHA256 on every tested wrapper combination.
+Final Docker inspect sizes: amd64 191,924,240 bytes (about 183 MiB),
+ARM64 194,346,388 bytes (about 185 MiB). `/opt/plink2` is 7.3/6.4 MiB;
+the remaining main cost is Debian/Python/OpenBLAS/LAPACK runtime libraries.
+The multi-stage final image has no compiler or source tree; APT indexes and
+download caches are cleared. Installed package lists and full layer history were
+recorded; they are not dependency locks.
 
-Final image sizes are 191,883,972 bytes (amd64) and 194,302,092 bytes (arm64);
-image IDs are `2848310c3393…` and `b1af31b6f558…`.
-The amd64 SIF SHA256 is
-`03b6d43b39e5f444c502377c22076178e133886a920f0887d2808c784b2881ed`.
-Profiles retain required libraries (137/132 MiB under `/usr/lib`), only 48 KiB
-under `/usr/include`, 12 KiB APT cache and 4 KiB APT lists. Compilers, source
-archives and build-time development trees are excluded by the final stage.
+ARM64 Apptainer is not separately validated. No production reference-family
+download, real-cohort scientific correctness or production site deployment is
+claimed. Host-side discovery contract tests and actual read-only backend binds
+are recorded separately from production system deployment.
 
-Discovery tests map only the two site-root literals into private directories,
-and resolve the frozen validator path as the compiler does. They are paired
-with actual read-only wrapper mounts; no production system directory is changed.
-Resource tests use synthetic bytes or the fixed official software source, not
-real cohorts. Full production reference-family downloads, scientific correctness
-and production site deployment are not claimed.
-
-Multi-stage builds exclude compiler/source archives; runtime libraries and
-license notices remain. The existing Action is unchanged and byte-identical to
-fresh `taf new` output. Readiness, publication, Action/GHCR/Index success and
-scientific acceptance remain separate gates.
+The Action is byte-identical to fresh `taf new -d -t` output and is unchanged.
+Publication, public CI/GHCR/Index success and scientific acceptance are separate
+gates; this update task does not publish.
 
 ## License and Citation
 

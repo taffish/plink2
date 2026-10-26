@@ -18,14 +18,30 @@ host `RESOURCE_PATH` 使用普通环境变量引号，不能误加literal-quote�
 新增READY重新签名后的错误ID、大小、缺许可证负向；helper与自动挂载必须同时拒绝。
 缺宿主Python3明确失败，不能静默跳过校验；关闭开关及手动bind另行验证。
 
-## b.1.0 后继验收
+## b.1.2 后继验收（2026-10-25）
+
+当前共有36个exact探针：combined exist、18个单exist、17个独立test。
+新增`beta-missing`：默认/精简列输出的sample missingness与独立合成计数一致，
+6,005字符位点ID原样保留。官方GLM线性batch回归脚本原样在真实wrapper执行，
+覆盖多表型、多等位位点、covariates与7种模型的batch/逐表型结果对照。
+不修改上游算法，也不将这些完整数值测试放入Dockerfile构建硬门。
+
+资源单元回归27项，另断言目标已存在时不覆盖、模拟不支持原子操作时明确失败并保留stage。
+新成员安装/幂等复用/verify与自动发现统一校验整个已有库：坏的无关成员不能被绕过，
+恢复和重复安装必须保持原有效成员SHA。xjp原生三后端重跑7窗口×INT/TERM/HUP，
+各84份安装/中断/恢复/幂等回执；ARM64 Podman补3窗口的36回执，不冒称全部组合。
+Docker Desktop gRPC FUSE不支持no-replace目录重命名：单独验收拒绝、partial保留、
+Podman同路径恢复及Docker只读复用，不把该宿主共享目录的直接安装记作PASS。
+Docker容器内/tmp资源单元门仍实跑通过。原始失败、环境限制及最终矩阵见维护者证据。
+
+## b.1.0 历史后继验收
 
 `beta-merge` 用16个合成样本拆分后纵向合并，检查16样本和24位点零基因型差异。
 `ldsc` 使用300个合成记录的精确线性模型，独立检查h2=0.3，采用浮点容差。
 `mtag` 用200个合成记录/两个trait/显式协方差，保留maxFDR计算，检查有限输出和正SE。
 `compress` 覆盖 BED→PGEN→BED 逐字节往返，以及独立 PGI 索引模式。
 这些验证封装可运行和基本数据通路，不冒充生产统计适用性；不改上游算法。
-当前版本必须重跑所有后端，不能引用下方历史版本PASS代替。共有35个exact探针：
+新版本必须重跑所有后端，不能引用历史版本PASS代替。当时共有35个exact探针：
 combined exist、18个单exist、16个独立test；root context原生双架构构建另取证。
 
 ## a.7.13 后继验收

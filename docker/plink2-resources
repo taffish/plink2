@@ -1,7 +1,8 @@
 #!/usr/bin/python3
-"""显式、固定清单的参考资源安装；不替用户选择科学数据。"""
+"""Install explicitly selected fixed reference members, never scientific choices."""
 import argparse
 import ctypes
+import errno
 import fcntl
 import hashlib
 import json
@@ -29,13 +30,13 @@ class Interrupted(Exception):
         self.signum = signum
 
 def interrupt(signum, frame):
-    # Apptainer/终端可能重复转发同一次中断；首次信号确定退出码，后续信号不打断有界清理。
+    # Preserve the first signal status; repeated forwarding must not abort cleanup.
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, signal.SIG_IGN)
     raise Interrupted(signum)
 
 def download(cmd):
-    # 子进程登记前屏蔽信号；子进程使用独立 session，父进程只清理本次 PID。
+    # Block signals until registration; clean up only the owned child session.
     signals = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
     previous = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
     child = None
@@ -62,11 +63,16 @@ def download(cmd):
                 child.wait()
 
 def promote(stage, target):
-    # Linux 镜像上的原子且禁止覆盖 promotion；即使目标是空目录也不替换。
+    # Linux atomic no-replace promotion also protects existing empty targets.
     libc = ctypes.CDLL(None, use_errno=True)
     rename = libc.renameat2
     if rename(-100, os.fsencode(stage), -100, os.fsencode(target), 1):
         err = ctypes.get_errno()
+        if err in (errno.EINVAL, errno.ENOSYS, errno.EOPNOTSUPP):
+            raise OSError(err, 'filesystem does not support atomic no-replace promotion; '
+                          'completed partial retained at ' + str(stage) + '; '
+                          'retry on a supporting filesystem/backend (e.g. native Linux or Podman); '
+                          'existing resources were not overwritten', str(target))
         raise OSError(err, os.strerror(err), str(target))
 
 def digest(path):
@@ -107,6 +113,10 @@ def main():
         p.error('--resource-root must be an existing actual host-bound directory')
     root = a.resource_root.resolve()
     os.umask(0o022)
+    # Validate every installed member, including those outside this selection.
+    # An empty root is allowed only for an initial install; staging stays private.
+    if any(not entry.name.startswith('.') for entry in root.iterdir()):
+        validation.verify_root(root)
     for m in chosen:
         target = root / m['id']
         if a.action == 'verify' or target.exists() or target.is_symlink():
@@ -119,6 +129,8 @@ def main():
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError('resource root is locked; retry after the other installer finishes')
+            if any(not entry.name.startswith('.') for entry in root.iterdir()):
+                validation.verify_root(root)
             if target.exists() or target.is_symlink():
                 verify(m, target); print('VERIFIED ' + m['id']); continue
             partial = root / ('.partial-' + hashlib.sha256(canonical(m)).hexdigest())
@@ -170,7 +182,7 @@ def main():
                 dst.chmod(0o644)
             (stage / 'receipt.json').write_text(json.dumps(m, indent=2) + '\n')
             (stage / 'receipt.json').chmod(0o644)
-            # 重试允许重建完整性标记；不删除任何已安装成员或下载内容。
+            # Retry may rebuild markers, never delete installed members or payloads.
             sums = ''.join(digest(stage / name) + '  ' + name + '\n'
                            for name in sorted({'receipt.json'} | {f['name'] for f in m['files']}))
             (stage / 'SHA256SUMS').write_text(sums)

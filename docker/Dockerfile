@@ -1,12 +1,13 @@
 FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG PLINK2_VERSION=2.0.0-b.1.0
-ARG PLINK2_TAG=v2.0.0-b.1.0
-ARG PLINK2_SHA256=07e08fe3a2c3287d5b85697fea95cb7885fbf0d877f792817237c3bf1343411f
+ARG PLINK2_VERSION=2.0.0-b.1.2
+ARG PLINK2_TAG=v2.0.0-b.1.2
+ARG PLINK2_SHA256=cae10bba9c470c1adb336d8871f1ca071b9e57e2bf6c86677c208184c7dc4a42
 
-# 基础镜像 digest 不锁定活动 APT 仓库；包修订/可得性可能变化。先区分网络、索引与下架，
-# 核对 Debian 官方来源和架构；采用新依赖须重建双架构并复验离线 smoke/真实 wrapper。
+# The base digest does not freeze live APT repositories. Revisions may disappear.
+# Diagnose transport/index/removal separately; new inputs require both native builds
+# and offline smoke plus real-wrapper verification against official Debian sources.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -20,8 +21,9 @@ RUN apt-get update \
 
 WORKDIR /tmp/plink2-build
 
-# 固定 tag+SHA256 不保证永久可下载。404/TLS/截断先分类；旧材料仅接受同 SHA256 可信副本。
-# 若采用新源码，核实 tag/commit/许可后更新上述身份并全量重验，不跳过校验或盲目重算哈希。
+# A fixed tag and SHA256 do not guarantee permanent availability. Classify transport,
+# removal and corruption; accept old bytes only from a trusted matching copy. New
+# source needs reviewed identity/licenses and full testing, never bypassed hashes.
 RUN set -eux; \
     curl -fsSL "https://github.com/chrchang/plink-ng/archive/refs/tags/${PLINK2_TAG}.tar.gz" -o plink2.tar.gz; \
     echo "${PLINK2_SHA256}  plink2.tar.gz" | sha256sum -c -; \
@@ -66,7 +68,8 @@ FROM debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e36870
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# final APT 仍为活动仓库，非完整输入 lock；同 builder 的排查/更新门，已发布身份用后继修复。
+# Final-stage APT is also live, not a complete input lock; apply the same checks.
+# Published identities stay immutable; repairs require a successor.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -84,8 +87,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/plink2 /opt/plink2
-# helper 的 resources.json 固定 URL/大小/SHA，但第三方资源仍可能下架；保留许可边界。
-# 下载失败不改 checksum；可信旧副本可用 --source-dir，新资源需新 catalog 身份和完整重验。
+# Resource URLs/sizes/hashes are pinned but may disappear; retain resource terms.
+# Never refresh hashes on failure. Use trusted matching --source-dir bytes, or
+# review a new catalog identity and repeat the complete resource tests.
 COPY docker/plink2-resources /opt/plink2/bin/plink2-resources
 COPY src/resource_validation.py /opt/plink2/bin/resource_validation.py
 COPY docker/resources.json /opt/plink2/share/resources.json
@@ -100,7 +104,7 @@ RUN set -eux; \
     ln -s /opt/plink2/bin/mtag /usr/local/bin/mtag; \
     ln -s /opt/plink2/bin/pgen_compress /usr/local/bin/pgen_compress; \
     test -x /opt/plink2/bin/pgen_compress; \
-    plink2 --version 2>&1 | grep -Fx "PLINK v2.0.0-b.1.0 64-bit (19 Oct 2026)" >/dev/null; \
+    plink2 --version 2>&1 | grep -Fx "PLINK v2.0.0-b.1.2 64-bit (24 Oct 2026)" >/dev/null; \
     ldsc --version 2>&1 | grep -Fx "ldsc (plink-ng) v0.1" >/dev/null; \
     mtag --version 2>&1 | grep -Fx "mtag (plink-ng) v0.1" >/dev/null; \
     plink2 --help 2>&1 | grep -F -- "--make-pgen" >/dev/null; \

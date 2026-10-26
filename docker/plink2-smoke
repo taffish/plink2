@@ -1,5 +1,5 @@
 #!/bin/sh
-# 每个模式独立、断网、自包含；保留 stage/退出码/有界日志。
+# Each mode is independent and offline, with bounded failure diagnostics.
 set -eu
 mode=${1:?mode required}
 tmp=$(mktemp -d /tmp/taf-plink2-smoke.XXXXXX)
@@ -26,15 +26,15 @@ run() { stage=$1; shift; "$@" > "$stage.log" 2>&1; }
 case "$mode" in
 identity)
     stage=identity
-    grep -Fx 'PLINK 2.0 2.0.0-b.1.0' /opt/plink2/share/doc/plink2/source.txt
-    grep -Fx 'SHA256: 07e08fe3a2c3287d5b85697fea95cb7885fbf0d877f792817237c3bf1343411f' /opt/plink2/share/doc/plink2/source.txt
+    grep -Fx 'PLINK 2.0 2.0.0-b.1.2' /opt/plink2/share/doc/plink2/source.txt
+    grep -Fx 'SHA256: cae10bba9c470c1adb336d8871f1ca071b9e57e2bf6c86677c208184c7dc4a42' /opt/plink2/share/doc/plink2/source.txt
     for f in COPYING COPYING.LESSER simde-COPYING libdeflate-COPYING zstd-COPYING zstd-LICENSE LICENSE.QD; do
         test -s "/opt/plink2/share/licenses/plink2/$f"
     done
     ;;
 interface)
     run version plink2 --version
-    grep -Fx 'PLINK v2.0.0-b.1.0 64-bit (19 Oct 2026)' version.log
+    grep -Fx 'PLINK v2.0.0-b.1.2 64-bit (24 Oct 2026)' version.log
     run help plink2 --help
     for opt in --make-pgen --glm --pca --hardy --export; do grep -F -- "$opt" help.log >/dev/null; done
     run subset-version vcf_subset --version
@@ -235,6 +235,33 @@ assert len(rows) == 201 and rows[0] == ['ID','BETA1','SE1','Z1','BETA2','SE2','Z
 for row in rows[1:]:
     assert all(math.isfinite(float(v)) for v in row[1:]), row
     assert float(row[2]) > 0 and float(row[5]) > 0, row
+PY
+    ;;
+beta-missing)
+    stage=missing-fixture
+    python3 - <<'PY'
+from pathlib import Path
+header = ['##fileformat=VCFv4.2', '##contig=<ID=1,length=100000>',
+          '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+          '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts2\ts3\ts4']
+rows = ['1\t10\tshort\tA\tG\t.\tPASS\t.\tGT\t0/0\t0/1\t./.\t1/1',
+        '1\t20\t'+'long_'+('x'*6000)+'\tC\tT\t.\tPASS\t.\tGT\t0/1\t./.\t0/0\t1/1',
+        '1\t30\tlast\tA\tC\t.\tPASS\t.\tGT\t0/0\t0/1\t1/1\t./.']
+Path('missing.vcf').write_text('\n'.join(header+rows)+'\n')
+PY
+    run import plink2 --vcf missing.vcf --make-pgen --out tiny --memory 640 --threads 1
+    run full plink2 --pfile tiny --missing --out full --memory 640 --threads 1
+    run limited plink2 --pfile tiny --missing vcols=ref,alt --out limited --memory 640 --threads 1
+    stage=compare-sample-missingness
+    cmp full.smiss limited.smiss
+    python3 - <<'PY'
+from pathlib import Path
+rows = [line.split() for line in Path('limited.smiss').read_text().splitlines()]
+cols = [x.lstrip('#') for x in rows[0]]
+counts = {r[cols.index('IID')]:int(r[cols.index('MISSING_CT')]) for r in rows[1:]}
+assert counts == {'s1':0,'s2':1,'s3':1,'s4':1}, (cols, rows)
+assert all(int(r[cols.index('OBS_CT')]) == 3 for r in rows[1:])
+assert 'long_'+('x'*6000) in Path('full.vmiss').read_text()
 PY
     ;;
 resources)

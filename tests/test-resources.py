@@ -40,6 +40,19 @@ with tempfile.TemporaryDirectory(prefix='plink2-resource-test-') as td:
     assert all(f.stat().st_mode & 0o777 == 0o644 for f in target.iterdir())
     run('verify',['verify',*args],marker='VERIFIED')
     run('idempotent',['install',*args],marker='VERIFIED')
+    # A bad unrelated member must block install and verify before any mutation.
+    sibling=root/'broken-v1'; sibling.mkdir(); (sibling/'keep').write_bytes(b'old recovery evidence')
+    newmember=dict(m,id='new-v1')
+    catalog.write_text(json.dumps(dict(schema=1,members=[m,newmember])))
+    before={str(f.relative_to(root)):f.read_bytes() for f in root.rglob('*') if f.is_file()}
+    run('bad-sibling-new-install',['install','--catalog',str(catalog),'--resource-root',str(root),'--member','new-v1'],1,'receipt')
+    run('bad-sibling-idempotent',['install',*args],1,'receipt')
+    run('bad-sibling-verify',['verify',*args],1,'receipt')
+    assert before=={str(f.relative_to(root)):f.read_bytes() for f in root.rglob('*') if f.is_file()}
+    assert not (root/'new-v1').exists()
+    (sibling/'keep').unlink(); sibling.rmdir()
+    catalog.write_text(json.dumps(dict(schema=1,members=[m])))
+    run('whole-root-recovery',['install',*args],marker='VERIFIED')
     (target/'tiny.txt').write_bytes(b'x'*len(payload))
     run('same-size-corrupt',['verify',*args],1,'mismatch')
     run('no-overwrite-corrupt',['install',*args],1,'mismatch')
@@ -51,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix='plink2-resource-test-') as td:
     run('symlink-file',['verify',*args],1,'mismatch')
     (target/'tiny.txt').unlink(); (target/'tiny.txt').write_bytes(payload)
     (target/'receipt.json').write_text('{}')
-    run('wrong-receipt',['verify',*args],1,'receipt')
+    run('wrong-receipt',['verify',*args],1,'invalid member ID')
     # URL/size/hash validation must precede network or install.
     for field,value in [('url','http://example.invalid/tiny'),('bytes',0),('sha256','bad'),('name','../escape')]:
         bad=json.loads(json.dumps(m)); bad['files'][0][field]=value
@@ -79,4 +92,16 @@ with tempfile.TemporaryDirectory(prefix='plink2-resource-test-') as td:
     except OSError: pass
     else: raise AssertionError('promotion overwrote existing directory')
     assert (a/'keep').read_text()=='x' and b.is_dir()
+    # Unsupported filesystems must fail closed, never fall back to replacing rename.
+    import ctypes, errno
+    from unittest.mock import patch
+    class Unsupported:
+        def renameat2(self, *args):
+            ctypes.set_errno(errno.EINVAL)
+            return -1
+    with patch.object(mod.ctypes, 'CDLL', return_value=Unsupported()):
+        try: mod.promote(a,t/'new-target')
+        except OSError as e: assert 'completed partial retained' in str(e)
+        else: raise AssertionError('unsupported promotion unexpectedly succeeded')
+    assert (a/'keep').read_text()=='x' and not (t/'new-target').exists()
     print('PASS',len(cases),'resource contract tests')

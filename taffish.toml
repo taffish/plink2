@@ -1,7 +1,7 @@
 [package]
 name = "plink2"
 kind = "tool"
-version = "2.0.0-b.1.0"
+version = "2.0.0-b.1.2"
 release = 1
 license = "Apache-2.0"
 main = "src/main.taf"
@@ -17,7 +17,7 @@ pipe = true
 command_mode = true
 
 [container]
-image = "ghcr.io/taffish/plink2:2.0.0-b.1.0-r1"
+image = "ghcr.io/taffish/plink2:2.0.0-b.1.2-r1"
 dockerfile = "docker/Dockerfile"
 build_platforms = "linux/amd64,linux/arm64"
 
@@ -25,7 +25,7 @@ build_platforms = "linux/amd64,linux/arm64"
 domain = "bio"
 categories = ["genomics", "gwas", "population-genetics", "variant", "genotype"]
 keywords = ["PLINK 2.0", "plink2", "GWAS", "PGEN", "VCF", "BGEN", "genotype", "association", "population genetics"]
-description = "PLINK 2.0 beta 1.0 command-line runtime for genotype data management, statistics, GWAS, PGEN workflows, VCF subsetting and bundled LD-score/MTAG utilities."
+description = "PLINK 2.0 beta 1.2 command-line runtime for genotype data management, statistics, GWAS, PGEN workflows, VCF subsetting and bundled LD-score/MTAG utilities."
 
 [upstream]
 name = "PLINK 2.0"
@@ -33,16 +33,16 @@ type = "github"
 repo = "chrchang/plink-ng"
 homepage = "https://www.cog-genomics.org/plink/2.0/"
 manual = "https://www.cog-genomics.org/plink/2.0/"
-release_url = "https://github.com/chrchang/plink-ng/releases/tag/v2.0.0-b.1.0"
-downloads = "https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-b.1.0.tar.gz"
-version = "2.0.0-b.1.0"
-commit = "b0c8f4b48a58911978a56da6ecddddd993bb6aaa"
+release_url = "https://github.com/chrchang/plink-ng/releases/tag/v2.0.0-b.1.2"
+downloads = "https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-b.1.2.tar.gz"
+version = "2.0.0-b.1.2"
+commit = "cc2c95e61c509d49aaf884d2ec0956a921770745"
 license = "GPL-3.0-or-later for PLINK 2.0, ldsc and mtag; LGPL-3.0-or-later for include libraries and vcf_subset; bundled SIMDe/libdeflate/zstd/QD components retain their upstream licenses"
 citation = "Chang CC, Chow CC, Tellier LCAM, Vattikuti S, Purcell SM, Lee JJ. Second-generation PLINK: rising to the challenge of larger and richer datasets. GigaScience. 2015;4:7."
 doi = "10.1186/s13742-015-0047-8"
 pmid = "25722852"
-# Tagged beta 1.0 was explicitly accepted by the maintainer on 2026-10-20.
-# This is not blanket approval of future rolling/pre-release candidates.
+# Maintainer-approved on 2026-10-25: track official versioned beta Releases
+# with draft=false and prerelease=false; exclude rolling snapshots and prereleases.
 watch = "tags"
 strip_prefix = "v"
 
@@ -50,4 +50,4 @@ strip_prefix = "v"
 backend = "docker"
 timeout = 180
 exist = ["plink2", "vcf_subset", "ldsc", "mtag", "pgen_compress", "plink2-resources", "plink2-smoke", "python3", "curl", "gzip", "awk", "grep", "sed", "ldd", "sh", "bash", "tail", "cmp"]
-test = ["plink2-smoke identity", "plink2-smoke interface", "plink2-smoke linkage", "plink2-smoke core", "plink2-smoke multiallelic", "plink2-smoke subset", "plink2-smoke errors", "plink2-smoke adjust", "plink2-smoke read-freq", "plink2-smoke update-map", "plink2-smoke mendel", "plink2-smoke compress", "plink2-smoke beta-merge", "plink2-smoke ldsc", "plink2-smoke mtag", "plink2-smoke resources"]
+test = ["plink2-smoke identity", "plink2-smoke interface", "plink2-smoke linkage", "plink2-smoke core", "plink2-smoke multiallelic", "plink2-smoke subset", "plink2-smoke errors", "plink2-smoke adjust", "plink2-smoke read-freq", "plink2-smoke update-map", "plink2-smoke mendel", "plink2-smoke compress", "plink2-smoke beta-merge", "plink2-smoke ldsc", "plink2-smoke mtag", "plink2-smoke resources", "plink2-smoke beta-missing"]

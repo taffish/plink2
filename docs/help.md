@@ -1,4 +1,4 @@
-plink2 2.0.0-b.1.0-r1
+plink2 2.0.0-b.1.2-r1
 
 Purpose: Genotype conversion, QC, allele frequencies, PCA and association analysis.
 
@@ -45,20 +45,20 @@ Optional reference resources (no default download):
     --member hgdp-grch38-chry-noannot-20260930 --resource-root plink2-resources
   The same command verifies/skips a complete install. HTTP resume needs Range;
   a checksum mismatch fails closed. --source-dir DIR uses exact offline files.
+  Atomic-rename unsupported (e.g. Docker Desktop gRPC FUSE)? Partial is retained:
+  retry the same install with TAFFISH_CONTAINER_BACKEND=podman or on native Linux.
+  Docker can then verify/read the prepared root; never delete old resources.
   Personal root: ~/.local/share/taffish/resources/plink2
   Shared root: /usr/local/share/taffish/resources/plink2 (admin prepares once).
 
 Read a prepared root (automatic mounts are read-only):
   export TAFFISH_PLINK2_RESOURCE_PATH=/usr/local/share/taffish/resources/plink2
-  TAFFISH_CONTAINER_BACKEND=docker \
-    taf-plink2 plink2-resources verify --resource-root /references \
-    --member hgdp-grch38-chry-noannot-20260930
-  TAFFISH_CONTAINER_BACKEND=podman \
-    taf-plink2 plink2-resources verify --resource-root /references \
-    --member hgdp-grch38-chry-noannot-20260930
-  TAFFISH_CONTAINER_BACKEND=apptainer \
-    taf-plink2 plink2-resources verify --resource-root /references \
-    --member hgdp-grch38-chry-noannot-20260930
+  TAFFISH_CONTAINER_BACKEND=docker taf-plink2 plink2-resources verify \
+    --resource-root /references --member hgdp-grch38-chry-noannot-20260930
+  TAFFISH_CONTAINER_BACKEND=podman taf-plink2 plink2-resources verify \
+    --resource-root /references --member hgdp-grch38-chry-noannot-20260930
+  TAFFISH_CONTAINER_BACKEND=apptainer taf-plink2 plink2-resources verify \
+    --resource-root /references --member hgdp-grch38-chry-noannot-20260930
   Discovery needs host Python 3: personal -> /usr/local/share -> /opt/taffish.
   Invalid roots/receipts fail closed; custom catalogs are user-pinned, not signed.
   Set TAFFISH_PLINK2_RESOURCE_AUTO_MOUNT=0 for setup or manual mounts.
@@ -74,7 +74,7 @@ Read a prepared root (automatic mounts are read-only):
   and --psam /references/MEMBER/hgdp_chrY.psam (replace MEMBER with the ID).
 
 Immediate notes:
-  Tagged beta 1.0, not PLINK 1.9. PCA/GRM now reject very-low-MAF variants;
+  Tagged beta 1.2, not PLINK 1.9. PCA/GRM now reject very-low-MAF variants;
   --grm-maf explicitly filters them. Choose thresholds appropriate to your data.
   PGEN does not preserve genotype-probability triplets, read depths or quality.
   Choose reference callset/build explicitly; chrY is not a genome.
